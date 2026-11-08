@@ -18,7 +18,8 @@ GeoPulse 不承诺排名，不把 Provider API 结果冒充 Kimi App、ChatGPT �
 要求 Python 3.11+；当前锁文件在 Python 3.14 验证。PDF 和浏览器验收需要 Chrome/Chromium。
 
 ```bash
-cd skills/geopulse
+git clone https://github.com/noah-1106/geopulse.git
+cd geopulse
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-lock.txt
 .venv/bin/python backend/run.py
