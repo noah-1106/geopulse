@@ -1,5 +1,33 @@
 # Changelog
 
+## 2.4.0 — 2026-11-09
+
+### Intervention 证据闭环
+
+- 新增 schema v6 与应用 v2.4.0，001–005 checksum 不变。以现有 Action 作为 Intervention cohort，新增 `content_briefs`、`action_assets`、`asset_publications`、`action_remeasurement_rounds`，ExternalEvent/Schedule 可关联对应对象，不新建平行 Intervention 或 timeline 表。
+- Action 创建时生成默认 Brief/Asset 草稿。Brief 主张必须为该 Opportunity 基线范围内的 Answer/Observation revision/Citation ref，否则显式 `pending`；跨项目、错误父子关系和 hash 不匹配均拒绝。pending 阻止 Brief/Asset/Action 审批，审批版本不可覆盖，修改创建新版本。
+- Asset 与 Publication 分离。一个 cohort 可有多个资产，一个资产可登记多个真实渠道 URL、媒体、含时区时间、商业关系和成本；未知成本为 NULL，填写成本必须有币种。Publication 不可变，首条才兼容投影旧 `actions.published_*`；旧单发布/单轮复测 API 保留。
+- D7/D14/D28 每轮使用独立 target Wave，创建时固定 baseline official Run，评估时固定 target official Run，保存完整 comparison/hash、成功标准、理由和 Answer/Observation/Citation refs。后续更换 official Run 不改写冻结评估。
+- 复测状态区分待测量、已有测量、证据不足、不可比和历史不可用；`attribution_status=not_attributable`。小样本/完整度不足不能输出改善，同期多资产不计算 per-asset delta，已结束 cohort 不重开。
+- Provider 调度只创建 Run；Consumer Web 只以 `remeasurement-round:{id}` 去重提醒，不创建 Schedule/Run、不触发 BrowserWorker。通用 schedule API 拒绝带 `action_id` 的复测旁路。
+- populated v5→v6 保守回填 legacy Brief/Asset/Publication/Round，保留 Answer/raw hash、旧事件 anchor 和旧报告 JSON/HTML/hash，不伪造 baseline Run 或 comparison；重复迁移不重复回填。
+
+### 工作台、报告与权限
+
+- 新增 Intervention drawer 和 `#/opportunities?tab=actions&action=<id>` 深链。首层呈现当前状态、最新 cohort 观察、非因果边界和一个主操作；Brief、资产、发布、复测和技术时间线分层展开，支持 1440/768/390、焦点闭环、Escape 和当前阶段恢复。
+- 报告快照升级为 schema v2，使用独立 `report_v2.html`，首屏回答“哪些关键问题不推荐我们、改了什么/发到哪里、之后观察到什么及证据强度”，并给唯一下一轮建议。旧 v1 快照仍走原模板，JSON/HTML/hash 不变。
+- 客户版、reviewer/viewer 不读取内部成本、Publication 备注、原始回答、Brief/Round 内部 evidence refs 或 Opportunity 原始 evidence/score JSON。Intervention 列表、详情、Brief/Asset/Publication/Round、导出和 HTTP 薄 CLI 已接通。
+- retention 后冻结 refs/comparison/hash 不变，Answer ref 标 `raw_purged`；新表进入项目导出并沿用递归 secret scrub/checksum。
+
+### 验证与边界
+
+- 完整 pytest 为 129 项通过；新增 populated migration、多个资产/渠道、固定 Run/comparison、Consumer Web 提醒、跨项目证据隔离、小样本/不可比、retention 和只读角色专项。
+- 独立真实 Chrome Intervention 验收通过：pending 阻断、2 个资产、2 条发布、D7/D14/D28、冻结评估、三问报告、HTML/PDF、深链刷新、焦点/Escape、viewer/reviewer、1440/768/390，外部请求为 0。
+- 六套真实 Chrome 均通过：八工作流、执行治理、人工 Consumer Web、模型执行/独立 Judge、两个授权 Web Driver，以及 Intervention 证据链。前端 ESM 与 Python compile 通过。
+- 离线黄金集 12/12、2700 次 DemoProvider 压力、ECharts vendor 完整性和 `pip-audit` 通过；压力无重复样本/revision、恢复重复 Provider 调用或外部网络调用。新增变更的凭据模式扫描无发现；本机未安装 gitleaks，CI 保留完整仓库扫描。
+- 开发库先创建带 manifest 的 v5 一致性备份，再迁移至 v6；两次迁移前备份的 SHA-256 一致，`integrity_check=ok`，外键检查无违规。v2.4 预览已恢复，worker/BrowserWorker 禁用以避免自动外部调用。
+- 本轮只使用 Demo/离线夹具，不执行真实付费 Provider 或真实网页调用；DeepSeek Web/Kimi Web 真实平台 live 边界不变。未自动提交、推送或同步 Skills_Repo。
+
 ## 2.3.0 — 2026-11-08
 
 ### 授权 Consumer Web Collector

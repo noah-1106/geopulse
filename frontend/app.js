@@ -1,5 +1,5 @@
 import { api, setCsrf } from "./api.js";
-import { h, clear, pageHead, field, input, select, toast, formError, label, loadingSkeleton, drawer } from "./components.js";
+import { h, clear, pageHead, field, input, select, toast, label, loadingSkeleton, drawer, closeAllDrawers, onSubmit } from "./components.js";
 import { renderOverview } from "./views/overview.js";
 import { renderPrompts } from "./views/prompts.js";
 import { renderEntities } from "./views/entities.js";
@@ -83,6 +83,7 @@ function setProtocol(data = {}) {
   ].filter(([, value]) => value);
   if (!items.length) {
     band.hidden = true;
+    document.documentElement.style.setProperty("--protocol-height", "0px");
     return;
   }
   band.hidden = false;
@@ -90,6 +91,7 @@ function setProtocol(data = {}) {
   items.filter(([name]) => ["引擎", "模式", "数据"].includes(name)).forEach(([name, value]) => band.append(h("span", { class: "protocol-item" }, `${name}：${value}`)));
   band.append(h("details", { class: "protocol-details" }, h("summary", {}, "查看完整冻结口径"),
     h("dl", {}, items.map(([name, value]) => h("div", {}, h("dt", {}, name), h("dd", {}, value))))));
+  document.documentElement.style.setProperty("--protocol-height", `${band.offsetHeight}px`);
 }
 
 function cleanup() {
@@ -97,9 +99,16 @@ function cleanup() {
   state.cleanups = [];
 }
 
+let renderedHash = "";
 async function renderRoute() {
   if (!state.project) return;
   cleanup();
+  const routeChanged = renderedHash !== location.hash;
+  if (routeChanged) {
+    closeAllDrawers();
+    window.scrollTo(0, 0);
+  }
+  renderedHash = location.hash;
   const { name, params } = parseRoute();
   const route = routes.find(([routeName]) => routeName === name);
   document.getElementById("app-shell").dataset.route = name;
@@ -116,7 +125,9 @@ async function renderRoute() {
       refresh: () => { if (renderId === state.renderId) renderRoute(); },
       isCurrent: () => renderId === state.renderId,
     });
-    if (renderId === state.renderId) workspace.focus({ preventScroll: true });
+    if (renderId === state.renderId && !document.activeElement?.closest("[role=dialog],[role=tab]")) {
+      workspace.focus({ preventScroll: true });
+    }
   } catch (error) {
     if (renderId !== state.renderId) return;
     clear(workspace);
@@ -154,12 +165,9 @@ function createProjectDialog() {
     h("div", { class: "form-actions" }, h("button", { class: "button", type: "submit" }, "创建项目")));
   import("./components.js").then(() => {
     const modal = drawer("新建客户项目", form);
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      try {
-        const project = await api.post("/api/projects", { client_name: client.value, name: name.value, category: category.value });
-        modal.close(); toast("项目已创建"); await loadProjects(project.id); renderProjectSwitcher(); navigate("entities");
-      } catch (error) { formError(form, error); }
+    onSubmit(form, async () => {
+      const project = await api.post("/api/projects", { client_name: client.value, name: name.value, category: category.value });
+      modal.close(); toast("项目已创建"); await loadProjects(project.id); renderProjectSwitcher(); navigate("entities");
     });
   });
 }
@@ -173,6 +181,7 @@ async function loadProjects(preferredId) {
 
 function renderLogin(message = "") {
   cleanup();
+  closeAllDrawers();
   closeNavigation();
   document.getElementById("app-shell").hidden = true;
   const view = document.getElementById("login-view");
@@ -188,14 +197,10 @@ function renderLogin(message = "") {
     h("div", { class: "login-evidence", "aria-label": "从问题到报告的证据链" },
       ["问题", "原文", "判定", "机会", "报告"].map((item) => h("span", {}, item)))),
     h("div", { class: "login-form-wrap" }, form));
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const submit = form.querySelector("button[type=submit]"); submit.disabled = true;
-    try {
-      const result = await api.post("/api/auth/login", { email: email.value, password: password.value });
-      setCsrf(result.csrf_token); state.user = result.user;
-      await startApp();
-    } catch (error) { formError(form, error); submit.disabled = false; }
+  onSubmit(form, async () => {
+    const result = await api.post("/api/auth/login", { email: email.value, password: password.value });
+    setCsrf(result.csrf_token); state.user = result.user;
+    await startApp();
   });
 }
 
@@ -220,7 +225,7 @@ document.addEventListener("click", (event) => {
   const menu = document.getElementById("account-menu");
   if (menu.open && !menu.contains(event.target)) menu.open = false;
 });
-const mobileNavigation = window.matchMedia("(max-width: 760px)");
+const mobileNavigation = window.matchMedia("(max-width: 900px)");
 
 function closeNavigation(restoreFocus = false) {
   const sidebar = document.getElementById("sidebar");

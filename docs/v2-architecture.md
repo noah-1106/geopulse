@@ -1,8 +1,8 @@
-# GeoPulse v2.3 架构
+# GeoPulse v2.4 架构
 
 ## 1. 目标与边界
 
-GeoPulse v2.3 是单节点、多客户项目的 GEO 交付系统，重点是可复现测量、证据审计、严格比较和人工审批，而不是自动承诺优化效果。Provider API、人工 Consumer Web 与授权浏览器 Consumer Web 是独立采集口径。首批授权浏览器 Driver 为 DeepSeek Web 和 Kimi Web；两者已通过本地模拟页面的真实 Chrome 合同验收，但真实平台 live 尚未校准。ChatGPT、豆包、Gemini、Consumer App、验证码绕过、反检测伪装和大规模爬取不在本轮范围。
+GeoPulse v2.4 是单节点、多客户项目的 GEO 交付系统，重点是可复现测量、证据审计、严格比较和人工审批，而不是自动承诺优化效果。Provider API、人工 Consumer Web 与授权浏览器 Consumer Web 是独立采集口径。v2.4 以 Action 作为 Intervention cohort，将版本化 Brief、Content Asset、Channel Publication、多轮复测和客户决策串成一条证据链；同期变化仍不作单资产或策略因果归因。首批授权浏览器 Driver 为 DeepSeek Web 和 Kimi Web；两者已通过本地模拟页面的真实 Chrome 合同验收，但真实平台 live 尚未校准。ChatGPT、豆包、Gemini、Consumer App、验证码绕过、反检测伪装和大规模爬取不在本轮范围。
 
 保留以下部署约束：
 
@@ -69,8 +69,13 @@ Scheduler → 到期 Provider Wave → 幂等创建 Run → 同一个 SQLite 队
 | Citation | Provider 返回、人工记录或浏览器提取的页面 URL | `provider_returned/manual_page/browser_page` 分离；不伪造 URL；按 answer+URL+hash 去重 |
 | WebCollection | 采集方法、草稿/自动事实、浏览器 phase、实际页面、上下文、观察时间和提交事实 | 正式提交不可覆盖；自动任务禁止人工改录；失败不成为零提及 |
 | AnswerAttachment | 截图/raw HTML/text 的 SQLite BLOB、hash、大小与 tombstone | 单文件 10MB、每 Answer 12 个；HTML 不内联执行 |
-| Opportunity / Action | 候选缺口与七步交付 | 适用性审批后才评分/创建 Action |
-| Report / ReportEvent | 不可变数据快照与审批记录 | 展示状态与数据快照分离 |
+| Opportunity / Action | 候选缺口与七步 Intervention cohort | 适用性审批后才评分/创建 Action；已结束 cohort 不重开 |
+| ContentBrief | 目标问题、信息增量、假设、预期观察、渠道、成功标准和事实主张 | `(action_id,version)` 唯一；审批版本不可覆盖；无证据主张显式 pending |
+| ActionAsset | 内容身份、类型、版本、事实 refs 和适用/不适用边界 | 与 Brief 关联；批准后通过 `supersedes_asset_id` 创建新版本 |
+| AssetPublication | 某 Asset 的真实渠道、媒体、URL、含时区时间、成本/币种和商业关系 | 不可变渠道事实；成本未知为 NULL；首条才投影旧 Action 发布字段 |
+| ActionRemeasurementRound | D7/D14/D28 节点、固定 baseline/target Run、完整 comparison/hash 和证据 refs | 每轮独立目标 Wave；评估不可覆盖；只有 cohort 观察，没有 per-asset delta |
+| ExternalEvent / Schedule | 共时事件与 Provider 执行调度 | 可关联 Action/Asset/Publication/Round；Consumer Web round 只提醒，不创建 schedule |
+| Report / ReportEvent | 不可变数据快照与审批记录 | 展示状态与数据快照分离；v2 快照含客户决策摘要 |
 | AuditEvent | 管理操作留痕 | 写入前递归脱敏 |
 
 原始回答、observation、report data snapshot 都是审计资产，默认不自动删除。
@@ -174,11 +179,33 @@ Search HTTP 失败、空结果或没有可用资料不会调用 Chat 或降级 m
 
 截图与原始证据保存在同一个 SQLite 数据库，备份/恢复与项目导出保持一致；普通 Answer JSON 只返回元数据，不返回 BLOB。项目导出合同为 `geopulse-project-v2`，附件 bytes 使用 base64 编码，浏览器 profile 和 session 秘密不进入导出。
 
-## 8. 报告与导出
+## 8. Intervention 证据链与多轮复测
 
-客户版和内部版来自同一个不可变 data snapshot。创建时保存版本、内容 SHA-256 和 draft 状态；审批事件单独追加。导出时用当前审批状态渲染展示外壳，不重写数据快照。
+```text
+Opportunity baseline Answer / Observation / Citation refs
+  → Action（Intervention cohort）
+  → versioned Brief + Content Assets
+  → immutable Channel Publications + ExternalEvents
+  → D7 / D14 / D28 target Waves
+  → frozen cohort assessment + evidence timeline
+  → schema-v2 decision summary + one next recommendation
+```
 
-- 客户版和 reviewer/viewer 快照隐藏成本、内部原始样本和内部错误细节，并递归移除 per-engine execution map 中的 system prompt。
+Brief/Asset 的 evidence ref 只保存 Answer、Observation revision、Citation ID 与规范 hash，不复制原始回答。服务端验证同 client/project、Opportunity baseline `answer_ids`、父子关系和 hash；客户端传回的 `available_now` 不作为事实，读取时重新标注。原文按 retention 清理后，冻结 ref 不改写，只标为 `raw_purged`。Citation URL 只证明来源出现，不证明正文支持主张。
+
+Action 审批冻结最新 Brief 和草稿 Assets。后续变更创建新版本；已结束的 `verified/not_effective/stopped` cohort 不重开，后续投入另建 Action。Publication 与 Asset 分离，首条发布仅兼容更新旧 `actions.published_*`，后续发布不覆盖首条摘要。旧字段不再是新代码的事实来源。
+
+创建复测轮次时固定 Opportunity baseline official Run；评估时固定 target 当时的 official Run，并保存完整 comparison、comparison hash、成功标准、理由及两个 Run 的证据 refs。之后更换 official Run 不改写已冻结评估。状态区分 `pending_measurement / measured / insufficient_evidence / incomparable / legacy_unavailable`，`attribution_status` 始终为 `not_attributable`。小样本或完整度不足不能输出改善；协议不匹配为不可比。
+
+Provider round 复用 Scheduler，只创建 Run，不自动指定 official Run 或评估。Consumer Web round 使用 `remeasurement-round:{id}` 去重提醒，不创建 Schedule/Run、不调用 BrowserWorker；仍需显式 Run、`confirm_browser` 和 active session。通用 schedule API 拒绝携带 `action_id` 的旁路，复测必须从 rounds API 创建。
+
+Timeline 由 Brief/Asset 审批、Publication、ExternalEvent 和 Round 实时构建，不另建重复 timeline 表。报告创建时只纳入与所选 Wave 或其 rounds 相关的 Interventions。
+
+## 9. 报告与导出
+
+客户版和内部版来自同一个不可变 data snapshot。创建时保存版本、内容 SHA-256 和 draft 状态；审批事件单独追加。导出时用当前审批状态渲染展示外壳，不重写数据快照。新快照使用 `schema_version=2` 和独立 `report_v2.html`，首屏回答“哪些关键问题不推荐我们、改了什么/发到哪里、之后观察到什么及证据强度”，并给唯一下一轮建议；旧 v1 快照继续使用未修改的 `report.html`，JSON/HTML/hash 不变。
+
+- 客户版和 reviewer/viewer 快照隐藏成本、内部原始样本、内部 Intervention evidence refs、Opportunity 原始 evidence/score JSON 和内部错误细节，并递归移除 per-engine execution map 中的 system prompt。
 - 内部版包含原文、Judge、失败、成本和 revision。
 - 无正式 Run/无有效样本可保存待处理草稿，但发布闸门阻止审批。
 - 审批顺序：draft → data_checked → strategy_reviewed → client_approved → sent。
@@ -187,7 +214,7 @@ Search HTTP 失败、空结果或没有可用资料不会调用 Chat 或降级 m
 - Consumer Web 报告快照记录冻结采集方法/Driver、协议、独立 Judge、证据覆盖和内部附件 metadata/hash，不嵌入 BLOB；发布闸门重新校验正文 hash、截图字节和实际上下文。
 - 客户报告分别标注“人工 Consumer Web”或“授权浏览器 Consumer Web”，引用统一说明为未自动核验正文支持关系的 Consumer Web 页面引用，不包含账号别名、profile/session 元数据、内部截图、内部原文或内部成本。
 
-## 9. 前端安全与可访问性
+## 10. 前端安全与可访问性
 
 - 动态文本使用 `document.createTextNode`，不拼接不可信 HTML。
 - 外链只允许 HTTP(S)，新窗口带 `noopener noreferrer`。
@@ -197,7 +224,7 @@ Search HTTP 失败、空结果或没有可用资料不会调用 Chat 或降级 m
 - 可见 focus、reduced motion、ARIA progress/tab/dialog/live toast。
 - 表格自身可滚动，页面不能横向溢出；空、错误、加载和无权限都有下一步。
 
-## 10. 相关文档
+## 11. 相关文档
 
 - [指标定义](metrics.md)
 - [部署、备份与恢复](operations.md)

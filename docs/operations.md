@@ -84,7 +84,9 @@ CI、pytest、浏览器 smoke/governance/manual-web/model-execution/web-collecto
 - 周期任务每次只执行一次到期测量，再推进到未来，不在停机后突发补跑全部过期周期。
 - 调度认领、Run 创建、预算预留和下次时间推进位于同一可回滚事务内；失败保留诊断状态并生成告警。
 - 调度遇到软预算确认、硬预算或未知成本时进入 `blocked`，不会代替管理员确认超限。处理价格/额度后使用“处理后再试”。
-- Action 的“安排复测”会创建真实 Schedule；“确认改善”要求另一轮 Wave 的正式 Run 和严格同口径比较，不能用来源基线自我复测。
+- Intervention 的 Provider 复测节点从首条真实 Publication 计算 D7/D14/D28，调度只创建 Run，不自动指定正式 Run 或评估；Consumer Web 节点只生成去重提醒，不创建 Schedule/Run，也不触发 BrowserWorker。
+- 通用 `/schedules` 不接受带 `action_id` 的独立复测旁路；必须通过 `/actions/{id}/remeasurements` 创建，避免第二套复测事实来源。
+- “确认改善”要求另一轮 Wave 的正式 Run 和严格同口径比较，不能用来源基线自我复测；小样本、完整度不足和不可比只能保留证据不足/不可比状态。
 
 ### 预算执行语义
 
@@ -164,7 +166,9 @@ export GEOPULSE_BACKUP_DIR=/srv/geopulse/recovery-drill/backups
 .venv/bin/python scripts/geopulse_ctl.py migrate
 ```
 
-当前 schema 为 v5，`PRAGMA user_version=5`。迁移按 `001_v2.sql`、`002_execution_governance.sql`、`003_manual_consumer_web.sql`、`004_model_execution_search.sql`、`005_authorized_browser_collector.sql` 顺序执行并记录 checksum。v5 新增本机浏览器会话元数据、自动采集阶段/lease/恢复字段和 `browser_page` 引用；不保存 Cookie、密码或 profile 内容。populated v4→v5 测试保留 answer 原文、collection/citation ID、origin/title、证据 BLOB、外键和完整性，历史 collection 默认 `manual`。程序拒绝静默打开未知旧版本或更新版本。迁移前会自动创建带 manifest 的一致性备份；本版本不迁移旧 v1 回答数据。
+当前 schema 为 v6，`PRAGMA user_version=6`。迁移按 `001_v2.sql`、`002_execution_governance.sql`、`003_manual_consumer_web.sql`、`004_model_execution_search.sql`、`005_authorized_browser_collector.sql`、`006_intervention_evidence.sql` 顺序执行并记录 checksum。v6 新增 `content_briefs`、`action_assets`、`asset_publications`、`action_remeasurement_rounds`，并给 ExternalEvent/Schedule 增加可选关联；001–005 checksum 不变。
+
+populated v5→v6 保留 Answer ID、原文/raw hash、旧报告 JSON/HTML/hash、外键和完整性。旧 Action 只获得 `legacy` Brief；有真实发布的旧 Action 回填 legacy Asset/Publication，成本保持 NULL；已有 ExternalEvent 只关联不复制；旧 Action schedule 回填 `legacy_unavailable` round 并保留 anchor，不伪造 baseline Run 或 comparison。重复执行 migrate 不重复回填。程序拒绝静默打开未知旧版本或更新版本。迁移前会自动创建带 manifest 的一致性备份；本版本不迁移旧 v1 回答数据。
 
 ## 8. 项目导出与删除
 
@@ -173,13 +177,13 @@ export GEOPULSE_BACKUP_DIR=/srv/geopulse/recovery-drill/backups
 .venv/bin/python scripts/geopulse_ctl.py delete-project 1 --confirm '完整项目名'
 ```
 
-导出包含 schema、项目业务表、导出时间和 SHA-256，不含 secret store、`browser_sessions`、profile reference、lease owner 或浏览器 session 内部 ID。导出合同为 `geopulse-project-v2`；Consumer Web 附件 content 以 `{"encoding":"base64","data":"…"}` 表示，恢复或离线校验时必须按编码还原，不能把 base64 文本当作截图 bytes。删除会级联删除该项目业务数据；已有备份不会被自动删除，需按保留策略处理。UI 删除要求输入完整项目名。
+导出包含 schema、项目业务表（含 Brief、Asset、Publication 和 RemeasurementRound）、导出时间和 SHA-256，不含 secret store、`browser_sessions`、profile reference、lease owner 或浏览器 session 内部 ID。导出合同为 `geopulse-project-v2`；Consumer Web 附件 content 以 `{"encoding":"base64","data":"…"}` 表示，恢复或离线校验时必须按编码还原，不能把 base64 文本当作截图 bytes。删除会级联删除该项目业务数据；已有备份不会被自动删除，需按保留策略处理。UI 删除要求输入完整项目名。
 
 ## 9. 原文保留与清理
 
 `retention_days` 留空或为 0 时不自动清理。管理员显式配置后，维护任务按项目隔离处理到期原文；UI 可先预览 cutoff 和候选数，再确认执行并记录审计。
 
-清理只移除原始回答正文与敏感载荷，保留 `valid_sample`、observation、usage、状态和聚合所需元数据，并留下原文 tombstone。Consumer Web 同时清理草稿、页面引用卡片文本和附件 BLOB，授权浏览器还清理 conversation URL 与阶段详情，保留 raw hash、附件 hash/size 与 tombstone，并返回 `attachment_purged_count`。历史指标不会因正文为空而被改成零提及；清理后禁止新增依赖原文的 revision。旧报告快照保持不变，但包含已清理证据的新报告不能通过原文或人工证据发布闸门。
+清理只移除原始回答正文与敏感载荷，保留 `valid_sample`、observation、usage、状态和聚合所需元数据，并留下原文 tombstone。Consumer Web 同时清理草稿、页面引用卡片文本和附件 BLOB，授权浏览器还清理 conversation URL 与阶段详情，保留 raw hash、附件 hash/size 与 tombstone，并返回 `attachment_purged_count`。历史指标不会因正文为空而被改成零提及；清理后禁止新增依赖原文的 revision。Brief/Asset/Round 的冻结 evidence refs 与 comparison/hash 不改写，读取时标为 `raw_purged`。旧报告快照保持不变，但包含已清理证据的新报告不能通过原文或人工证据发布闸门。
 
 ## 10. 日志、成本与告警
 
@@ -220,4 +224,4 @@ HTTP 结构化日志包含 request ID、方法、路径、状态和延迟。业�
 .venv/bin/python -m pytest -q
 ```
 
-CI 还执行前端 ESM、五套真实浏览器、黄金集、模拟压力和 secret scanning。HTTP 薄业务 CLI 的认证、确认和文件校验见 [cli.md](cli.md)。更新 ECharts 时必须同步版本、来源、许可证和 SHA-256，不要无记录替换 minified 文件。
+CI 还执行前端 ESM、六套真实浏览器、黄金集、模拟压力和 secret scanning。HTTP 薄业务 CLI 的认证、确认和文件校验见 [cli.md](cli.md)。更新 ECharts 时必须同步版本、来源、许可证和 SHA-256，不要无记录替换 minified 文件。
