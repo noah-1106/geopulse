@@ -181,6 +181,71 @@ class ActionStatusIn(Model):
     remeasure_days: int = Field(default=14, ge=1, le=365)
 
 
+class EvidenceRefIn(Model):
+    answer_id: int
+    answer_hash: str = ""
+    observation_id: int | None = None
+    revision: int | None = Field(default=None, ge=1)
+    hash: str = ""
+    citation_id: int | None = None
+    citation_hash: str = ""
+    available_now: bool | None = None
+    unavailable_reason: str = ""
+
+
+class ClaimIn(Model):
+    text: str = Field(min_length=1, max_length=4000)
+    status: Literal["evidence_linked", "pending"]
+    evidence_refs: list[EvidenceRefIn] = []
+
+
+class BriefIn(Model):
+    information_gain: str = Field(min_length=1, max_length=4000)
+    hypothesis: str = Field(min_length=1, max_length=4000)
+    expected_observation: str = Field(min_length=1, max_length=4000)
+    channels: list[str] = []
+    success_criteria: str = Field(min_length=1, max_length=4000)
+    claims: list[ClaimIn] = Field(min_length=1)
+
+
+class AssetIn(Model):
+    brief_id: int
+    title: str = Field(min_length=1, max_length=500)
+    asset_type: str = "fact_page"
+    content: dict[str, Any] = {}
+    facts: list[ClaimIn] = Field(min_length=1)
+    applicability: str = ""
+    exclusions: str = ""
+    supersedes_asset_id: int | None = None
+
+
+class PublicationIn(Model):
+    asset_id: int
+    channel: str = Field(min_length=1, max_length=200)
+    outlet: str = ""
+    url: str
+    published_at: str
+    cost: float | None = Field(default=None, ge=0)
+    currency: str = ""
+    relationship: Literal["owned", "partner", "paid", "earned", "legacy", "unknown"] = "unknown"
+    notes: str = ""
+    artifact_version: str | None = None
+
+
+class RemeasurementItemIn(Model):
+    target_wave_id: int
+    offset_days: int = Field(ge=1, le=365)
+    success_criteria: str = ""
+
+
+class RemeasurementsIn(Model):
+    rounds: list[RemeasurementItemIn] = Field(min_length=1, max_length=12)
+
+
+class AssessmentIn(Model):
+    reason: str = ""
+
+
 class ReportIn(Model):
     wave_ids: list[int]
 

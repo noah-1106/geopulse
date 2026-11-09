@@ -237,7 +237,21 @@ score = 100 × Π max(0.0001, factor_i)^(weight_i / Σweight)
 
 权重总和必须大于 0，否则拒绝评分。事后修改项目默认权重不会改变已有 Wave 的机会评分。
 
-## 10. 解释边界
+## 10. Intervention cohort 复测
+
+一个 Action 是一个 Intervention cohort。同期多个 Content Asset 和 Channel Publication 不分别计算效果，API、界面和报告均不返回 per-asset delta。
+
+- 创建 D7/D14/D28 节点时固定 Opportunity baseline Wave 当时的 official Run；每轮使用不同的 target Wave。
+- 管理员评估时固定 target 当时的 official Run，按固定 Run ID 重新计算指标，再执行与第 8 节相同的严格协议和完整度比较。
+- 保存完整 comparison、SHA-256、Answer/Observation revision/Citation refs、成功标准和理由；之后更换 baseline 或 target official Run 不改写已冻结评估。
+- `measured` 只表示严格同口径且达到项目小样本阈值；`insufficient_evidence` 表示样本或完整度不足；`incomparable` 表示协议不匹配；`legacy_unavailable` 表示历史记录没有可补造的固定证据。
+- 只有 `measured` 才按 Opportunity 缺口类型描述 `improved/not_improved`。其余状态均为 `observed_change=unknown`，不能转化为总体改善结论。
+- 所有轮的 `attribution_status=not_attributable`。观察到改善不等于某篇资产、某个渠道或 GEO Action 导致了改善。
+- Provider 调度只创建 Run，不自动指定 official Run 或评估；Consumer Web 只去重提醒，仍需显式采集与管理员评估。
+
+原文清理后，冻结 comparison/hash 和 refs 不变；Answer ref 标为 `raw_purged`，不能据此重新核验原文或伪造历史结论。
+
+## 11. 解释边界
 
 - 小样本 Wilson 区间不是显著性实验结论。
 - 两次共时测量不是随机对照实验。

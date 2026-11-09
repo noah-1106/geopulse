@@ -1,6 +1,6 @@
 import { api } from "../api.js";
 import { executionFields } from "../execution.js";
-import { h, clear, pageHead, section, dataTable, badge, metric, drawer, field, input, select, checkbox, toast, formError, confirmDialog, formatDate, label, emptyState, handleBudgetError, pct } from "../components.js";
+import { h, clear, pageHead, section, dataTable, badge, metric, drawer, field, input, select, checkbox, toast, formError, confirmDialog, formatDate, label, emptyState, handleBudgetError, pct, onSubmit } from "../components.js";
 
 const openRunHistories = new Set();
 const isManualWave = (wave) => wave.protocol.measurement_target === "consumer_web";
@@ -68,6 +68,12 @@ export async function renderMeasure(root, ctx) {
   const rail = h("aside", { class: "list-rail" }, h("div", { class: "list-rail-head" }, h("strong", {}, "Wave 列表"), h("span", { class: "muted small" }, `${waves.length} 个`)),
     waves.map((item) => h("button", { class: `list-item${item.id === wave.id ? " active" : ""}`, "aria-current": item.id === wave.id ? "location" : null, "data-wave-id": item.id, onClick: () => ctx.navigate("measure", { wave: item.id }) },
       h("strong", {}, item.label), badge(item.status), h("small", { class: "cell-sub" }, `${item.runs.length} 个 run · ${formatDate(item.created_at, ctx.project.timezone)}`))));
+  const narrowRail = window.matchMedia("(max-width: 1100px)");
+  const railDetails = h("details", { class: "wave-rail", open: !narrowRail.matches },
+    h("summary", {}, h("span", {}, `当前 Wave：${wave.label}`), h("small", {}, `${waves.length} 个方案`)), rail);
+  const syncRail = () => { railDetails.open = !narrowRail.matches; };
+  narrowRail.addEventListener("change", syncRail);
+  ctx.onCleanup(() => narrowRail.removeEventListener("change", syncRail));
   const detail = h("div", { class: "detail-pane" });
   const active = run && ["queued", "running"].includes(run.status);
   const canSelectOfficial = run && ["done", "partial"].includes(run.status) && ctx.role === "admin" && wave.official_run_id !== run.id;
@@ -130,7 +136,7 @@ export async function renderMeasure(root, ctx) {
     if (history.open) openRunHistories.add(historyKey); else openRunHistories.delete(historyKey);
   });
   detail.append(history);
-  root.append(h("div", { class: "split-layout has-rail measure-browser" }, rail, detail));
+  root.append(h("div", { class: "split-layout has-rail measure-browser" }, railDetails, detail));
   if (active) {
     let polling = false;
     const timer = setInterval(async () => {
@@ -311,49 +317,54 @@ function waveWizard(ctx, sets, engines, browserSessions = {}) {
     h("div", { class: "form-actions" }, h("button", { class: "button", type: "submit" }, "创建方案并查看预估")));
   const modal = drawer("新建测量方案", form, { wide: true });
   syncEngines();
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
+  onSubmit(form, async () => {
     const selected = engineChecks.filter((item) => item.control.checked).map((item) => item.engine);
-    if (!selected.length) { formError(form, new Error("至少选择一个测量目标")); return; }
-    if (new Set(selected.map((item) => `${item.mode}/${item.measurement_target}`)).size !== 1) { formError(form, new Error("同一 wave 不能混合 memory/search 或 API/产品端口径")); return; }
+    if (!selected.length) throw new Error("至少选择一个测量目标");
+    if (new Set(selected.map((item) => `${item.mode}/${item.measurement_target}`)).size !== 1) throw new Error("同一 wave 不能混合 memory/search 或 API/产品端口径");
     const manual = selected.length === 1 && selected[0].kind === "manual_web";
     const browser = manual && collectionMethod.value === "browser_assisted";
-    if (selected.some((item) => item.kind === "manual_web") && !manual) { formError(form, new Error("Consumer Web Wave 只能选择一个目标，不能与 Provider 混合")); return; }
-    if (judge.control.checked && judgeMode.value === "independent" && !judgeEngine.value) { formError(form, new Error("请选择独立 Judge，或改用同引擎判定")); return; }
-    try {
-      const overrides = {};
-      if (!manual) selected.forEach((engine) => {
-        const values = answerOverrides.get(engine.id)?.read() || {};
-        if (Object.keys(values).length) overrides[engine.id] = values;
-      });
-      const wave = await api.post(`/api/projects/${ctx.project.id}/waves`, {
-        label: labelInput.value, prompt_set_id: Number(setInput.value), engine_ids: selected.map((item) => item.id),
-        repeats: Number(repeats.value), ...(manual ? {} : answerParams.read()), use_judge: judge.control.checked,
-        answer_overrides: manual ? undefined : overrides, judge_overrides: judge.control.checked ? judgeParams.read() : undefined,
-        judge_engine_id: judge.control.checked && judgeMode.value === "independent" ? Number(judgeEngine.value) : undefined,
-        collection_protocol: manual ? {
-          product_url: productUrl.value, platform: platform.value, surface: surface.value, page_mode: pageMode.value,
-          networking: networking.control.checked, deep_thinking: deepThinking.control.checked,
-          deep_research: deepResearch.control.checked, session_mode: sessionMode.value, login_state: loginState.value,
-          account_type: accountType.value, region: region.value, language: language.value,
-          context_clearing: contextClearing.value, follow_up_policy: followUpPolicy.value,
-          collection_method: browser ? "browser_assisted" : "manual",
-          browser_driver: browser ? browserDriver.value : null,
-          protocol_version: browser ? "browser-web-v1" : "manual-web-v1",
-        } : undefined,
-      });
-      clear(modal.body);
-      modal.body.append(h("h3", {}, browser ? "授权浏览器采集与独立 Judge 预估" : manual ? "人工采集与独立 Judge 预估" : "调用与费用预估"), h("dl", { class: "definition-list" },
-        manual ? h("div", {}, h("dt", {}, browser ? "串行浏览器任务" : "人工采集任务"), h("dd", {}, wave.estimate.collection_tasks)) : null,
-        h("div", {}, h("dt", {}, "Provider 回答调用"), h("dd", {}, wave.estimate.answer_calls)), h("div", {}, h("dt", {}, "Judge 调用"), h("dd", {}, wave.estimate.judge_calls)),
-        h("div", {}, h("dt", {}, "检索调用"), h("dd", {}, wave.estimate.search_calls)), h("div", {}, h("dt", {}, "预估费用"), h("dd", {}, wave.estimate.cost_unknown ? "部分价格未知，不按零成本处理" : wave.estimate.estimated_cost))),
-        dataTable(["引擎", "角色", "基础预估", "含安全重试"], (wave.estimate.by_engine || []).map((entry) => [entry.engine, entry.role === "judge" ? "独立 Judge" : "回答 / 同引擎 Judge", entry.estimated_cost ?? "未知", entry.max_estimated_cost ?? "未知"])),
-        h("p", { class: "muted" }, wave.estimate.note),
-        browser ? h("p", { class: "muted" }, `点击下方确认后，将把 ${wave.estimate.collection_tasks} 条冻结问题串行发送到 ${platform.value || driverName(browserDriver.value)}（${driverName(browserDriver.value)}），再使用独立 Judge 判定。网页订阅费用不按 API 调用估算；结果不明不会自动重发。`) : null,
-        h("div", { class: "form-actions" },
-          h("button", { class: "button secondary", onClick: () => { modal.close(); ctx.navigate("measure", { wave: wave.id }); } }, "仅保存方案"),
-          h("button", { class: "button", onClick: async () => { try { await startRun(ctx, wave); modal.close(); } catch (error) { if (!handleBudgetError(error, async (reason) => { await startRun(ctx, wave, reason); modal.close(); })) toast(error.message, true); } } }, browser ? "确认发送并创建 Run" : manual ? "创建人工采集 Run" : "确认调用并创建 Run")));
-    } catch (error) { formError(form, error); }
+    if (selected.some((item) => item.kind === "manual_web") && !manual) throw new Error("Consumer Web Wave 只能选择一个目标，不能与 Provider 混合");
+    if (judge.control.checked && judgeMode.value === "independent" && !judgeEngine.value) throw new Error("请选择独立 Judge，或改用同引擎判定");
+    const overrides = {};
+    if (!manual) selected.forEach((engine) => {
+      const values = answerOverrides.get(engine.id)?.read() || {};
+      if (Object.keys(values).length) overrides[engine.id] = values;
+    });
+    const wave = await api.post(`/api/projects/${ctx.project.id}/waves`, {
+      label: labelInput.value, prompt_set_id: Number(setInput.value), engine_ids: selected.map((item) => item.id),
+      repeats: Number(repeats.value), ...(manual ? {} : answerParams.read()), use_judge: judge.control.checked,
+      answer_overrides: manual ? undefined : overrides, judge_overrides: judge.control.checked ? judgeParams.read() : undefined,
+      judge_engine_id: judge.control.checked && judgeMode.value === "independent" ? Number(judgeEngine.value) : undefined,
+      collection_protocol: manual ? {
+        product_url: productUrl.value, platform: platform.value, surface: surface.value, page_mode: pageMode.value,
+        networking: networking.control.checked, deep_thinking: deepThinking.control.checked,
+        deep_research: deepResearch.control.checked, session_mode: sessionMode.value, login_state: loginState.value,
+        account_type: accountType.value, region: region.value, language: language.value,
+        context_clearing: contextClearing.value, follow_up_policy: followUpPolicy.value,
+        collection_method: browser ? "browser_assisted" : "manual",
+        browser_driver: browser ? browserDriver.value : null,
+        protocol_version: browser ? "browser-web-v1" : "manual-web-v1",
+      } : undefined,
+    });
+    const estimateForm = h("form", {}, h("h3", {}, browser ? "授权浏览器采集与独立 Judge 预估" : manual ? "人工采集与独立 Judge 预估" : "调用与费用预估"), h("dl", { class: "definition-list" },
+      manual ? h("div", {}, h("dt", {}, browser ? "串行浏览器任务" : "人工采集任务"), h("dd", {}, wave.estimate.collection_tasks)) : null,
+      h("div", {}, h("dt", {}, "Provider 回答调用"), h("dd", {}, wave.estimate.answer_calls)), h("div", {}, h("dt", {}, "Judge 调用"), h("dd", {}, wave.estimate.judge_calls)),
+      h("div", {}, h("dt", {}, "检索调用"), h("dd", {}, wave.estimate.search_calls)), h("div", {}, h("dt", {}, "预估费用"), h("dd", {}, wave.estimate.cost_unknown ? "部分价格未知，不按零成本处理" : wave.estimate.estimated_cost))),
+      dataTable(["引擎", "角色", "基础预估", "含安全重试"], (wave.estimate.by_engine || []).map((entry) => [entry.engine, entry.role === "judge" ? "独立 Judge" : "回答 / 同引擎 Judge", entry.estimated_cost ?? "未知", entry.max_estimated_cost ?? "未知"])),
+      h("p", { class: "muted" }, wave.estimate.note),
+      browser ? h("p", { class: "muted" }, `点击下方确认后，将把 ${wave.estimate.collection_tasks} 条冻结问题串行发送到 ${platform.value || driverName(browserDriver.value)}（${driverName(browserDriver.value)}），再使用独立 Judge 判定。网页订阅费用不按 API 调用估算；结果不明不会自动重发。`) : null,
+      h("div", { class: "form-actions" },
+        h("button", { class: "button secondary", type: "button", onClick: () => { modal.close(); ctx.navigate("measure", { wave: wave.id }); } }, "仅保存方案"),
+        h("button", { class: "button", type: "submit" }, browser ? "确认发送并创建 Run" : manual ? "创建人工采集 Run" : "确认调用并创建 Run")));
+    clear(modal.body);
+    modal.body.append(estimateForm);
+    modal.focus();
+    onSubmit(estimateForm, async () => {
+      try { await startRun(ctx, wave); modal.close(); }
+      catch (error) {
+        if (!handleBudgetError(error, async (reason) => { await startRun(ctx, wave, reason); modal.close(); })) throw error;
+      }
+    });
   });
 }
 
