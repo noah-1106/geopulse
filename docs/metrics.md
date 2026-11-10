@@ -169,7 +169,7 @@ Citation Rate = 主品牌 confirmed mentioned 且关联至少一个白名单 cit
 
 Memory 模式返回 `citation_rate=null`，页面明确“不计算来源引用率”，不能显示虚构的 0% 或引用 URL。
 
-来源结构按 `source_type × domain × entity_role` 汇总引用数和去重来源数。分类支持官网、配置域名类别（如百科/UGC）和其他。Provider 引用为 `origin=provider_returned`；人工实际看到的页面引用为 `origin=manual_page`，授权浏览器从当前回答区域提取的引用为 `origin=browser_page`。两类页面引用只记录页面实际展示的 URL、标题和卡片文本，不自动访问 URL，也不宣称已核验正文与主张的支持关系。报告统一称为 Consumer Web 页面引用，同时保留冻结采集方法，不与 Provider 来源混称。
+来源结构按 `source_type × domain × entity_role` 汇总引用数和去重来源数。分类支持官网、百科、UGC、新闻、行业、研报、投诉和其他。项目设置以规范化 hostname 配置域名类别，只默认应用于之后写入的 Citation，不静默改写历史来源或旧报告。Provider 引用为 `origin=provider_returned`；人工实际看到的页面引用为 `origin=manual_page`，授权浏览器从当前回答区域提取的引用为 `origin=browser_page`。两类页面引用只记录页面实际展示的 URL、标题和卡片文本，不自动访问 URL，也不宣称已核验正文与主张的支持关系。报告统一称为 Consumer Web 页面引用，同时保留冻结采集方法，不与 Provider 来源混称。
 
 ## 7. 数据质量
 
@@ -194,6 +194,10 @@ Memory 模式返回 `citation_rate=null`，页面明确“不计算来源引用�
 
 只要样本中含 demo，`limitations` 就明确“包含演示引擎，结果不代表真实 AI 表现”。不同模式不能合并成正常汇总。
 
+`delivery_quality` 另从当前事实派生补判覆盖、active JudgeBatch、rules/evidence fallback、fallback 推荐待复核、provisional 推荐、人工 revision、配置/实际模型和交付 readiness，不新建第二套手工状态机。`pending` 不会在本版本被静默从历史公式分母中删除，但待复核推荐必须标为 provisional，且不能进入已批准客户结论。负面向推荐仍按上文降级，不成立 Top Choice 或有效推荐。
+
+Run metrics 和新报告快照带 `metric_appendix`，定义版本为 `geo-metrics-v2.1`。每项同时给出公式、原始 hits/n、当前 value/CI、聚合单元、冻结权重和限制；它复用本文件公式，不形成另一套指标计算。小样本仍可带限制交付，但活跃/混合补判、disabled Judge 未补齐、fallback 推荐和 provisional 推荐会阻断报告审批。
+
 ## 8. 严格比较与迁移
 
 基线和复测都必须由管理员指定正式 Run。协议检查覆盖：
@@ -201,6 +205,7 @@ Memory 模式返回 `citation_rate=null`，页面明确“不计算来源引用�
 - prompt set hash、实体版本、竞品池 hash；
 - engine signature、repeats，以及归一化后的按回答引擎 `answer_execution` / `judge_execution` 有效参数；
 - language、market、judge version、`judge_mode`；
+- 补判后的 effective Judge status/signature、有效 Answer 覆盖数和活跃批次 ID。只有原口径一致或全部有效 Answer 都由同一补判配置覆盖时才可严格比较；只补一边、部分覆盖、配置不同或批次活跃均拒绝严格 delta；
 - memory/search、measurement target、`use_judge`；
 - Consumer Web 的 collection protocol、product URL、platform、collection method、browser Driver 和独立 Judge signature；
 - 有效样本定义、stratum weights。

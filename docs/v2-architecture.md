@@ -1,8 +1,8 @@
-# GeoPulse v2.4 架构
+# GeoPulse v2.5 架构
 
 ## 1. 目标与边界
 
-GeoPulse v2.4 是单节点、多客户项目的 GEO 交付系统，重点是可复现测量、证据审计、严格比较和人工审批，而不是自动承诺优化效果。Provider API、人工 Consumer Web 与授权浏览器 Consumer Web 是独立采集口径。v2.4 以 Action 作为 Intervention cohort，将版本化 Brief、Content Asset、Channel Publication、多轮复测和客户决策串成一条证据链；同期变化仍不作单资产或策略因果归因。首批授权浏览器 Driver 为 DeepSeek Web 和 Kimi Web；两者已通过本地模拟页面的真实 Chrome 合同验收，但真实平台 live 尚未校准。ChatGPT、豆包、Gemini、Consumer App、验证码绕过、反检测伪装和大规模爬取不在本轮范围。
+GeoPulse v2.5 是单节点、多客户项目的 GEO 交付系统，重点是可复现测量、证据审计、严格比较和人工审批，而不是自动承诺优化效果。Provider API、人工 Consumer Web 与授权浏览器 Consumer Web 是独立采集口径。v2.4 以 Action 作为 Intervention cohort，将版本化 Brief、Content Asset、Channel Publication、多轮复测和客户决策串成一条证据链；v2.5 在此基础上增加跑前准备单、只追加判定的 JudgeBatch、统一交付质量与只读业务 handoff。同期变化仍不作单资产或策略因果归因。首批授权浏览器 Driver 为 DeepSeek Web 和 Kimi Web；两者已通过本地模拟页面的真实 Chrome 合同验收，但真实平台 live 尚未校准。ChatGPT、豆包、Gemini、Consumer App、验证码绕过、反检测伪装和大规模爬取不在本轮范围。
 
 保留以下部署约束：
 
@@ -47,6 +47,9 @@ Browser Web Run → awaiting_collection / web_collections.browser_phase
 
 Scheduler → 到期 Provider Wave → 幂等创建 Run → 同一个 SQLite 队列
            Consumer Web Wave 禁止自动调度
+
+Existing Run / Answer → JudgeBatch → judge_batch_items → 仅 Judge Provider 调用
+                     → 追加 Observation revision；answer/search 调用为 0
 ```
 
 `run_test_server.py` 必须显式接收临时 DB 和 secret store。浏览器 smoke 使用动态空闲端口，只终止自己创建的子进程。
@@ -66,6 +69,7 @@ Scheduler → 到期 Provider Wave → 幂等创建 Run → 同一个 SQLite 队
 | Answer | 一次 prompt×engine×round 原始回答 | 原文不覆盖；样本键唯一 |
 | CallAttempt | answer/judge/search 调用、allowlisted 请求参数、响应元数据、usage、成本与错误 | 每次 attempt 独立追加；不记录 API Key 或推理正文 |
 | Observation | 某实体在某回答中的当前/历史判定 | revision 追加，不改原文 |
+| JudgeBatch / JudgeBatchItem | 对已有 Run 的全部可补判或选中 Answer 只执行 Judge | 不是新 Wave/Run；answer/search=0；保存冻结 Judge 配置、预算和逐项状态；只追加 Observation revision |
 | Citation | Provider 返回、人工记录或浏览器提取的页面 URL | `provider_returned/manual_page/browser_page` 分离；不伪造 URL；按 answer+URL+hash 去重 |
 | WebCollection | 采集方法、草稿/自动事实、浏览器 phase、实际页面、上下文、观察时间和提交事实 | 正式提交不可覆盖；自动任务禁止人工改录；失败不成为零提及 |
 | AnswerAttachment | 截图/raw HTML/text 的 SQLite BLOB、hash、大小与 tombstone | 单文件 10MB、每 Answer 12 个；HTML 不内联执行 |
@@ -99,7 +103,8 @@ Scheduler → 到期 Provider Wave → 幂等创建 Run → 同一个 SQLite 队
 
 1. 两次正式 Run 的 intent×engine pair-key 完整度；
 2. 两次测量的有效样本率；
-3. 当前 Wave 冻结的最低完整度阈值（默认 90%）。
+3. 当前 Wave 冻结的最低完整度阈值（默认 90%）；
+4. 补判后的 effective Judge signature、覆盖率和活跃 JudgeBatch。只补一边、覆盖不完整、配置不一致或批次仍在执行时，不输出严格 delta。
 
 供应商返回模型版本变化时，即使协议兼容，也只标为探索性比较。API/Web 或不同 surface/session 上下文标为 `cross_surface`，只返回各自摘要，`delta=null`、`transitions=[]`，不生成严格 pp 或迁移；product URL、platform、collection method 和 browser Driver 也纳入跨口径判断。变化只描述共时样本，不自动归因为 GEO Action。
 
@@ -112,6 +117,9 @@ Answer 行本身就是持久队列，Provider 状态为 `queued / running / judg
 - 原文成功写入后，恢复只重跑判定，不重复 Provider 请求。
 - 没有剩余活动样本的 Run 在恢复时正确收尾。
 - 仅 `retryable=True` 且 `outcome_unknown=False` 的错误自动安全重试。
+- JudgeBatch 由同一 Worker 在没有 Answer 工作时原子领取 item。完成、取消和失败使用独立的 `judge-batch:{id}` 预算预留，不绑定原 Run 的预留。
+- 进程恢复时，未开始的补判 item 可继续；`running` item 可能已到达厂商，标为 `failed + interrupted_unknown + outcome_unknown=1`，绝不自动重放。重试 API 只接受结果明确的失败项。
+- 补判取消保留已经发生的调用台账；取消时在途返回不会静默追加为正式 Observation。已完成的 revision 不回滚。
 - 超时等结果不明错误保持 failed，必须管理员明确重试。
 - Provider 返回后若已请求取消，保留原文但样本标 cancelled，不进入有效指标。
 - 无法保证厂商侧绝不重复计费，因此 UI 和文档要求人工确认结果不明重试。
@@ -134,11 +142,23 @@ SQLite 单写者决定了这是有界单节点队列。不要把多个独立 Uvi
 - 只能来自 Provider 返回白名单的 `citation_urls`；
 - 开放候选实体及其证据。
 
-证据不在原文时，系统尝试确定性回查并标为待复核；缺失实体不会伪装成 confirmed absence。负面推荐被降级，Judge 失败显式记录 rules fallback。Demo 始终使用明确标记的 demo-rules。
+证据不在原文时，系统尝试确定性回查并标为待复核；缺失实体不会伪装成 confirmed absence。负面推荐被降级，Judge 失败显式记录 rules fallback。所有非 Demo 的 rules-fallback 或 llm-judge-evidence-fallback 推荐都必须 `review_status=pending` 并写明 `review_reason`，推荐计数标为 provisional；逐字证据仍不自动证明语义支持推荐，必要时应由人工 revision 修正。Demo 始终使用明确标记的 demo-rules。
 
-人工 Web 默认选择同项目、已启用的独立 Judge。普通 Provider 也可显式选择独立 Judge；未选择时保留各回答引擎兼任 Judge。Provider 独立 Judge 不能同时是本次回答引擎，真实回答与 Demo Judge 不混用。Judge 使用自己的冻结参数和 engine_config_id；Search 型 Judge 只调用结构化 Chat，不执行 Search。Demo Judge 只用于明确标记的离线测试；真实 Judge 的调用、usage、成本和 secret reference 与回答目标分离。显式关闭 Judge 时使用 rules fallback，仍需管理员仲裁后才能通过报告质量闸门。
+**JudgeBatch 只补判定，不重新采集。** admin 可对已有 Run 的全部可补判 Answer 或选中 Answer 创建批次，冻结独立 Judge 引擎、有效执行参数、版本和调用/费用预估。真实 Judge 创建和明确失败重试都要求在各自执行前单独确认；预估 answer/search 永远为 0。只有 raw 存在、SHA-256 可验证且采集证据完整的有效 Answer 才能补判；raw purged、hash 不符、截断/无效样本和未提交 Consumer Web 样本返回逐题排除原因。
+
+Worker 复用 engine slot、限流和调用台账，实际模型、usage、batch/item ID 与 Answer raw hash 写入判定元数据。每个实体按当前最大 revision+1 追加，不改 Answer、原 Observation、Citation 或 Run。全部有效 Answer 由同一 Judge 配置成功补判后形成 `consistent` effective lineage；只补部分或使用不同配置为 `mixed`。活跃或 mixed 批次阻断相应报告审批和严格比较。补判不自动改写旧报告，也不证明语义假阳性已被字符串校验全部解决。
+
+人工 Web 默认选择同项目、已启用的独立 Judge。普通 Provider 也可显式选择独立 Judge；未选择时保留各回答引擎兼任 Judge。Provider 独立 Judge 不能同时是本次回答引擎，真实回答与 Demo Judge 不混用。Judge 使用自己的冻结参数和 engine_config_id；Search 型 Judge 只调用结构化 Chat，不执行 Search。Demo Judge 只用于明确标记的离线测试；真实 Judge 的调用、usage、成本和 secret reference 与回答目标分离。显式关闭 Judge 时使用 rules fallback；真实 Provider Run 创建必须由 admin 显式 `confirm_judge_disabled=true` 并审计，Wave 草稿仍可保存。该确认只允许执行，不能绕过补判、人工复核和报告质量闸门。
 
 Consumer Web 提交要求非空正文、相同 origin、与冻结协议一致的实际上下文、带 offset 且与 IANA 时区一致的时间，以及至少一张通过 bytes/hash/size/magic 校验的截图。人工引用只记录用户实际看到的 URL、标题和卡片文本；浏览器引用只从当前回答区域提取实际 HTTP(S) URL。两者都不自动访问引用或宣称正文支持关系已核验。自动采集在一个显式事务内上传截图/HTML并提交正文、raw hash、引用和上下文，任一步失败全部回滚。附件下载仅 admin/analyst，reviewer/viewer 与跨项目 ID 均拒绝。
+
+### 跑前准备单、交付质量与只读 handoff
+
+`wave_readiness()` 复用冻结协议和费用预估，汇总引擎启用状态、Judge 配置/有效参数、历史健康、截断风险和启发式耗时。打开准备单不会发起健康检查或其他外部调用。耗时要求对应 operation 至少 3 条成功历史记录，按逐引擎串行和中位数/P90 估算；不足、Consumer Web 均为未知，Demo 不用于推算真实模型时长。上下文风险只来自声明能力和历史截断，不建立题型到 token 的固定映射。
+
+`run_quality()` 从 Run、最新 Observation、JudgeBatch 和正式 Run 事实派生执行状态、fallback/pending/provisional/human revision、配置模型/实际返回模型、补判 lineage、`delivery_readiness` 和唯一下一步，不另建手工项目状态机。现有指标公式不因 pending 而静默改写；未复核推荐会阻断批准。小样本可 `ready_with_limitations`，不一律判失败。
+
+`GET /api/projects/{project}/runs/{run}/handoff` 是面向内部成员及执行 agent 的只读投影，返回稳定 project/wave/run/report/opportunity ID、质量摘要、readiness、next_action、报告审批和手工工时状态。机会发现通过 audit 区分未检查与已检查为 0；旧报告仍有质量 gates 时下一步是创建新报告版本，不是批准旧快照。GeoPulse 不写外部业务孪生、不自动外发报告、不自动记录工时；外部同步方须自行记录 synced_at。
 
 ## 7. Provider 口径
 
@@ -207,11 +227,14 @@ Timeline 由 Brief/Asset 审批、Publication、ExternalEvent 和 Round 实时�
 
 - 客户版和 reviewer/viewer 快照隐藏成本、内部原始样本、内部 Intervention evidence refs、Opportunity 原始 evidence/score JSON 和内部错误细节，并递归移除 per-engine execution map 中的 system prompt。
 - 内部版包含原文、Judge、失败、成本和 revision。
+- 新快照同时冻结交付质量、JudgeBatch 覆盖、配置模型/实际返回模型，以及版本化 `metric_appendix`。附录给出公式、分子、分母、聚合单元、冻结权重和限制；配置模型与厂商实际返回模型不同只表示观察到路由，不自动判失败。
+- 活跃/混合补判、disabled Judge 未形成完整补判、fallback 推荐和 provisional 推荐均进入发布闸门。旧报告快照不被补判回写；质量恢复后应创建新版本。
 - 无正式 Run/无有效样本可保存待处理草稿，但发布闸门阻止审批。
 - 审批顺序：draft → data_checked → strategy_reviewed → client_approved → sent。
 - “sent”只登记接收人/方式/时间，不自动外发。
 - 客户 PDF 必须完成 client_approved。
 - Consumer Web 报告快照记录冻结采集方法/Driver、协议、独立 Judge、证据覆盖和内部附件 metadata/hash，不嵌入 BLOB；发布闸门重新校验正文 hash、截图字节和实际上下文。
+- 来源分类继续使用项目 `settings.source_domains`。系统管理提供域名→类别表格，hostname 去空白、转小写、去末尾点并做 IDNA/格式校验；类别为官网、百科、UGC、新闻、行业、研报、投诉或其他。保存只影响新写入 Citation 的默认分类，不静默改写历史 Citation 或旧报告。
 - 客户报告分别标注“人工 Consumer Web”或“授权浏览器 Consumer Web”，引用统一说明为未自动核验正文支持关系的 Consumer Web 页面引用，不包含账号别名、profile/session 元数据、内部截图、内部原文或内部成本。
 
 ## 10. 前端安全与可访问性

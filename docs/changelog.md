@@ -1,5 +1,37 @@
 # Changelog
 
+## 2.5.0 — 2026-11-10
+
+### 跑前配置校验
+
+- 新增应用 v2.5.0 与 schema v7；001–006 checksum 不变，旧 Wave、Observation、报告 JSON/HTML/hash 不回写。新增服务端测量准备单，在执行前汇总 Judge 方式、冻结参数、回答/Search/Judge 调用数、费用、历史健康、历史耗时和截断风险。
+- 历史耗时要求对应操作至少 3 条成功记录，按逐引擎串行和历史中位数/P90 启发式估算；样本不足、Consumer Web 和真实模型无历史时明确显示未知，不承诺固定分钟数，也不建立题型到 token 的写死映射。准备单不会自动执行付费健康检查。
+- 真实 Provider Run 关闭 Judge 时，创建 Run 必须由 admin 显式 `confirm_judge_disabled=true` 并留下审计；Wave 草稿仍可保存，该确认不绕过跑后的报告质量闸门。
+
+### Judge-only 补判与质量闸门
+
+- 新增 `judge_batches`、`judge_batch_items` 和可空 `call_attempts.judge_batch_id`。补判关联已有 Run/Answer，支持全量或逐题选择、独立预算、取消、恢复和明确失败重试；answer/search 调用与预估均为 0，不创建新 Wave 或回答 Run。
+- 只接受 raw 存在、hash 可验证、采集证据完整的有效 Answer。raw purged、hash 不符、截断、无效或未提交 Consumer Web 样本返回排除原因，不能靠补判变成有效样本或零提及。
+- 补判只追加当前最大 Observation revision + 1，保留原文、Answer、旧 revision 和 Citation；`judge_meta` 记录批次、配置/实际模型和 raw hash。原 Run 的 Judge 调用不伪填 batch ID。
+- 进程恢复只继续未开始项；在途项标为 `interrupted_unknown`，不自动重放可能已计费或已返回的真实请求。取消保留外部调用台账，但不把取消时的在途结果静默写成正式判定。只有 `outcome_unknown=0` 的明确失败项可重试。
+- 新增派生质量摘要与 effective Judge lineage，统一呈现执行状态、补判覆盖、fallback、pending/provisional、人工 revision、配置/实际模型和交付阻断。全量同配置补判可形成一致口径；部分覆盖、配置混合或活跃批次阻断相应报告审批和严格比较。
+- `rules-fallback` 与 `llm-judge-evidence-fallback` 的 recommended 必须 pending，负面推荐继续降级。报告 gate 阻止未复核推荐进入已批准客户结论；小样本仍可带限制交付，不宣称逐字证据校验能解决全部语义假阳性。
+
+### 交付交接、报告与来源管理
+
+- 新增只读 `GET /api/projects/{project}/runs/{run}/handoff`，提供稳定 project/wave/run/report/opportunity ID、质量摘要、readiness、唯一下一步、报告审批和工时状态。机会发现区分“未检查”和“已检查为 0”；旧报告仍有质量阻断时指向创建新版本。
+- 测量页把准备单、当前质量和唯一下一步放在首层，补判参数与历史记录渐进披露；机会、报告、工时和 Wave 收尾按钮连接到真实工作流，只读角色不显示无权执行的操作。
+- 新报告快照增加质量摘要、effective Judge protocol、JudgeBatch、配置/实际回答与 Judge 模型，以及版本化指标公式、分子、分母、聚合单元、权重和限制附录。客户版继续递归移除 system prompt、内部成本、原始证据和 secret reference。
+- 系统管理新增 `projects.settings.source_domains` 表格编辑，支持 hostname/IDNA 规范化和八类来源；只默认影响之后写入的 Citation，不静默重分类历史来源或旧报告。工时只提醒人工登记，不自动计时、写外部业务孪生或外发报告。
+- 项目导出包含 JudgeBatch 和逐项状态，沿用递归 secret scrub；嵌套 `secret_ref` 保持既有清空值合同。薄 CLI 新增 `judge-batch list/create/get/cancel/retry` 与 `run handoff`。
+
+### 验证与边界
+
+- 完整 pytest 为 **155 passed，1 warning**，包含 16 条已有回答只补 Judge、48 条新增 Observation revision、raw/hash/Web 排除、预算/权限/取消/恢复、populated v6→v7、导出脱敏、严格比较、报告闸门和完整 handoff。
+- 七套真实 Chrome 均通过：八工作流、执行治理、Intervention、人工 Consumer Web、模型执行、授权 Web Collector，以及新的准备单→补判→人工 revision→正式 Run→机会→报告审批→handoff→工时提醒→Wave 收尾。新路径覆盖 1440/768/390、键盘焦点、正确路由和零外部请求。
+- Python compile、全部前端 ESM、`git diff --check` 和 ECharts vendor integrity 通过。离线黄金集 12/12，通过实体、深度、情感、来源类型和 citation 合同回归；它不是生产 LLM 准确率证明。
+- 本轮自动化只使用 Demo/mock 和本地模拟页面，不执行真实付费 Provider、真实网页登录、自动报告外发或外部业务同步。未自动提交、推送、合并或同步 Skills_Repo。
+
 ## 2.4.0 — 2026-11-09
 
 ### Intervention 证据闭环

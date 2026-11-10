@@ -459,6 +459,7 @@ function renderGovernance(root, ctx, data) {
     toast("项目设置已保存，已有 Wave 未改变"); ctx.refresh();
   });
   root.append(form);
+  renderSourceDomains(root, ctx, settings.source_domains || {});
   if (data.retention) renderRetention(root, ctx, data.retention);
   if (ctx.role === "admin") {
     root.append(section("备份与项目导出", "项目导出不含密钥；数据库恢复仍通过停写后的运维 CLI 执行", h("div", { class: "section-note" },
@@ -469,6 +470,41 @@ function renderGovernance(root, ctx, data) {
     root.append(h("details", { class: "advanced" }, h("summary", {}, "最近审计事件"), h("div", {}, dataTable(["时间", "操作者", "对象", "动作"], data.audit.map((event) => [formatDate(event.created_at, ctx.project.timezone), event.actor_email || "系统", `${event.object_type} #${event.object_id}`, event.action])))));
     root.append(h("details", { class: "advanced" }, h("summary", {}, "危险操作：删除当前项目"), h("div", {}, h("p", { class: "muted" }, "删除前请先完成备份与项目导出。"), h("button", { class: "button danger", onClick: () => deleteProject(ctx) }, "永久删除当前项目"))));
   }
+}
+
+function renderSourceDomains(root, ctx, initial) {
+  const rows = Object.entries(initial).map(([domain, category]) => ({ domain, category }));
+  const categories = ["官网", "百科", "UGC", "新闻", "行业", "研报", "投诉", "其他"];
+  const list = h("div", { class: "source-domain-list" });
+  const draw = () => {
+    clear(list);
+    rows.forEach((row, index) => {
+      const domain = input(row.domain, { required: true, placeholder: "example.com", disabled: ctx.role !== "admin" });
+      const category = select(categories.map((value) => ({ value, label: value })), row.category, { disabled: ctx.role !== "admin" });
+      domain.addEventListener("input", () => { row.domain = domain.value; });
+      category.addEventListener("change", () => { row.category = category.value; });
+      list.append(h("div", { class: "form-grid source-domain-row" }, field("来源域名", domain), field("来源类别", category),
+        h("div", { class: "form-actions" }, ctx.role === "admin" ? h("button", { class: "button small-button secondary", type: "button", onClick: () => { rows.splice(index, 1); draw(); } }, "移除") : null)));
+    });
+    if (!rows.length) list.append(h("p", { class: "muted" }, "尚未配置来源域名；未匹配的来源归为“其他”。"));
+  };
+  draw();
+  const form = h("form", {}, list, h("div", { class: "form-actions" },
+    ctx.role === "admin" ? h("button", { class: "button secondary", type: "button", onClick: () => { rows.push({ domain: "", category: "其他" }); draw(); } }, "添加来源域名") : null,
+    ctx.role === "admin" ? h("button", { class: "button", type: "submit" }, "保存来源分类") : null));
+  onSubmit(form, async () => {
+    const mapping = {};
+    rows.forEach((row) => {
+      const domain = row.domain.trim();
+      if (!domain) throw new Error("来源域名不能为空；不需要的行请移除");
+      if (mapping[domain]) throw new Error(`来源域名重复：${domain}`);
+      mapping[domain] = row.category;
+    });
+    const result = await api.put(`/api/projects/${ctx.project.id}/settings`, { settings: { source_domains: mapping } });
+    ctx.project.settings = result.settings;
+    toast("来源分类已保存；历史 Citation 未改写"); ctx.refresh();
+  });
+  root.append(section("来源分类管理", "只应用于之后写入的 Citation；域名填 hostname，不填 https://、端口或路径。历史来源与旧报告不会静默重分类。", form));
 }
 
 function renderRetention(root, ctx, preview) {

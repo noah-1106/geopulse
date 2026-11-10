@@ -55,7 +55,8 @@ prompt-set       list / create / get / import / scaffold / review / status /
 entity           list / create / review / version / pool-diff
 engine           list / create / update / health
 wave             list / create / get / run / official / status
-run              get / answers / metrics / wait / cancel / retry
+run              get / handoff / answers / metrics / wait / cancel / retry
+judge-batch      list / create / get / cancel / retry
 answer           get / revise
 collection       get / save / submit / fail / resume
 browser-session  list / create / verify / revoke
@@ -126,6 +127,18 @@ $CTL report export --project 1 --report 7 \
 Shell 变量只缩短示例；也可以重复写完整解释器路径。`run wait` 只轮询 GET，等待超时不等于 Run 失败。
 
 `measure run --project 1 --spec wave.json` 是少量组合命令之一，按 `wave create → run create → 可选 wait/metrics` 编排。遇到真实调用确认或预算节点会立即停止并输出 `waiting_for_decision`，不会越过人工决定继续创建 Run。
+
+### Judge 补判与交付交接
+
+```bash
+$CTL judge-batch list --project 1 --run 12
+$CTL judge-batch create --project 1 --run 12 --spec judge-batch.json --confirm
+$CTL judge-batch get --project 1 --judge-batch 3
+$CTL judge-batch retry --project 1 --judge-batch 3 --confirm
+$CTL run handoff --project 1 --run 12
+```
+
+补判 spec 对应 `judge_engine_id`、可选 `answer_ids/judge_overrides` 和确认字段。它只追加 Observation revision，不重新请求 answer/search。真实补判创建与明确失败重试分别确认；`interrupted_unknown` 或其他 `outcome_unknown=1` 的项不能自动重试。handoff 只读，不写外部业务孪生或工时。
 
 ### Intervention 证据链
 

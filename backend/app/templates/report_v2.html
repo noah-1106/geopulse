@@ -45,6 +45,16 @@
   <span>实体版本 {{ wave.protocol.entity_version[:10] }}</span>
 </div>
 <p class="muted">{% for engine in wave.protocol.engine_signature %}{{ engine.name }} / {{ engine.model }}{{ '；' if not loop.last }}{% endfor %}</p>
+{% if wave.quality %}
+{% if wave.quality.provisional_recommendations %}<p class="warning">{{ wave.quality.provisional_recommendations }} 条推荐判定仍为 provisional，必须完成人工 revision 后才能形成客户推荐结论。</p>{% endif %}
+<p><strong>判定质量：</strong>{{ wave.quality.delivery_readiness }} · 有效样本 {{ wave.quality.valid_samples }}/{{ wave.quality.expected_samples }} · 待复核回答 {{ wave.quality.pending_review_answers }} · 规则 fallback {{ wave.quality.rules_fallback_answers }} · 证据 fallback {{ wave.quality.evidence_fallback_answers }} · 人工 revision {{ wave.quality.human_revisions }}</p>
+{% if wave.quality.judge_batches %}<p>JudgeBatch：{% for batch in wave.quality.judge_batches %}#{{ batch.id }}（{{ batch.status }}，覆盖 {{ batch.done }}/{{ batch.total }}，{{ batch.judge_engine.name }} / 配置 {{ batch.judge_engine.model }}）{{ '；' if not loop.last }}{% endfor %}</p>{% endif %}
+<h3>配置模型与实际返回模型</h3>
+<table><thead><tr><th>角色</th><th>配置模型</th><th>实际返回模型</th><th>说明</th></tr></thead><tbody>
+{% for row in wave.quality.models.answers %}<tr><td>回答 · {{ row.name }}</td><td>{{ row.configured_model }}</td><td>{{ row.actual_models|join('、') or '未返回' }}</td><td>{% if row.provider_routing_observed %}观察到厂商路由差异，不据此判失败{% else %}一致或未观察到差异{% endif %}</td></tr>{% endfor %}
+{% for row in wave.quality.models.judges %}<tr><td>Judge · {{ row.name }}{% if row.judge_batch_id %} · Batch #{{ row.judge_batch_id }}{% endif %}</td><td>{{ row.configured_model }}</td><td>{{ row.actual_models|join('、') or '未返回' }}</td><td>{% if row.provider_routing_observed %}观察到厂商路由差异，不据此判失败{% else %}一致或未观察到差异{% endif %}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
 {% if wave.protocol.measurement_target == 'consumer_web' and wave.protocol.collection_protocol %}{% set collection=wave.protocol.collection_protocol %}{% set automated=collection.collection_method|default('manual') == 'browser_assisted' %}<p>{{ '授权浏览器采集入口' if automated else '人工采集入口' }}：{{ collection.product_url }} · {{ collection.surface }} · {{ '新会话' if collection.session_mode == 'new' else '连续会话' }} · {{ collection.language }}</p><p class="muted">{{ '由本机授权浏览器执行冻结问题并提取当前回答、截图和页面引用；不是 Provider API。' if automated else '由人工在页面中观察并提交，不是 Provider API 或授权浏览器自动 Collector。' }}独立 Judge：{{ wave.protocol.judge_signature.name if wave.protocol.judge_signature else '未启用' }}。</p>{% if wave.metrics.quality.evidence_coverage %}<p>有效样本证据覆盖：{{ wave.metrics.quality.evidence_coverage.hits }}/{{ wave.metrics.quality.evidence_coverage.n }}；Consumer Web 页面引用仅记录页面实际展示的 URL，未自动核验正文支持关系。</p>{% endif %}{% endif %}
 <div class="metrics">
   {% for key,label in [('coverage','覆盖率'),('hit_rate','稳定命中率'),('effective_recommendation_rate','有效推荐率'),('north_star','有效推荐覆盖（北极星）'),('negative_risk_rate','负面风险率')] %}
@@ -77,6 +87,16 @@
 <table><thead><tr><th>意图</th><th>引擎</th><th>迁移</th></tr></thead><tbody>{% for row in snapshot.comparison.transitions %}<tr><td>{{ row.prompt_text }}</td><td>{{ row.engine_config_id }}</td><td>{{ row.change }}</td></tr>{% endfor %}</tbody></table>
 {% else %}<p class="warning">{{ snapshot.comparison.reason }}</p>{% endif %}
 </section>{% endif %}
+
+{% for wave in snapshot.waves %}
+<section><h2>{{ wave.wave.label }} · 指标公式与分母附录</h2>
+<p class="muted">定义版本 {{ wave.metric_appendix.version }}。{{ wave.metric_appendix.confidence }}</p>
+<table><thead><tr><th>指标</th><th>公式</th><th>本次分子 / 分母</th><th>聚合与权重</th></tr></thead><tbody>
+{% for row in wave.metric_appendix['items'] %}<tr><td>{{ row.label }}</td><td>{{ row.formula }}</td><td>{% if row.observed.hits is defined %}{{ row.observed.hits }} / {{ row.observed.n }} · {{ row.observed.value }}%{% else %}{{ row.observed.value }}% · n={{ row.observed.n }}{% endif %}</td><td>{{ row.aggregation }}；{{ row.weighting }}</td></tr>{% endfor %}
+</tbody></table>
+<p class="warning">{{ wave.metric_appendix.limitations|join('；') or '小样本与待复核限制仍按质量摘要解释；公式可复算不代表 GEO 因果归因。' }}</p>
+</section>
+{% endfor %}
 
 <section><h2>已确认机会与七步行动</h2>
 {% if snapshot.opportunities %}<table><thead><tr><th>问题</th><th>缺口</th><th>适用性</th><th>评分</th><th>证据</th></tr></thead><tbody>
