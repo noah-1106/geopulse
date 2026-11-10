@@ -18,6 +18,7 @@ MIGRATIONS = {
     4: Path(__file__).parent / "migrations" / "004_model_execution_search.sql",
     5: Path(__file__).parent / "migrations" / "005_authorized_browser_collector.sql",
     6: Path(__file__).parent / "migrations" / "006_intervention_evidence.sql",
+    7: Path(__file__).parent / "migrations" / "007_judge_quality_delivery.sql",
 }
 SCHEMA_VERSION = max(MIGRATIONS)
 

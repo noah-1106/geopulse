@@ -129,11 +129,11 @@ Action 就是 Intervention cohort。Brief 中的事实主张必须关联基线�
 | 阶段 | 已实现的体验 |
 |---|---|
 | 定义 | 多客户项目、问题集导入/审核/冻结/diff、实体卡、别名冲突与竞品池版本。 |
-| 测量 | Wave / Run 分离、回答与独立 Judge、API/网页分口径、调用预估、可恢复队列。 |
-| 复核 | 原文、引用、截图、实体判定、人工 revision、有效样本与失败原因。 |
+| 测量 | Wave / Run 分离、跑前准备单、回答与独立 Judge、API/网页分口径、可恢复队列。 |
+| 复核 | 原文、引用、截图、实体判定、人工 revision、Judge-only 补判、有效样本与失败原因。 |
 | 行动 | 候选适用性审核、七步 Intervention、Brief / Asset / Publication、共时事件。 |
-| 复测 | 同协议与完整度检查、D7/D14/D28 cohort 节点、Wilson 区间与证据强度。 |
-| 交付 | 不可变报告快照、三问摘要、逐级审批、客户版/内部版 HTML 与 PDF。 |
+| 复测 | 同协议与有效 Judge 口径检查、D7/D14/D28 cohort 节点、Wilson 区间与证据强度。 |
+| 交付 | 质量与唯一下一步、只读 handoff、不可变报告、实际模型与指标附录、逐级审批、HTML/PDF。 |
 | 管理 | 四角色、成本与工时、软/硬预算、调度、告警、原文保留、备份、导出和审计。 |
 
 逐项的“界面 → API → 持久化 → 执行器 → 权限 → 测试”对照见 [功能矩阵](docs/feature-matrix.md)。
@@ -181,6 +181,7 @@ docs/              架构、指标、运维、变更记录与截图
 .venv/bin/python tests/browser_model_execution.py
 .venv/bin/python tests/browser_web_collector.py
 .venv/bin/python tests/browser_interventions.py
+.venv/bin/python tests/browser_delivery_quality.py
 ```
 
 CI 还执行前端 ESM 语法检查、离线黄金集、2700 次 DemoProvider 模拟压力、依赖/vendor 完整性检查和 secret scan。自动化使用隔离数据与离线夹具，不自动登录真实消费者平台，也不产生真实付费调用。
@@ -252,10 +253,10 @@ Demo answers are deterministic local fixtures. They do not represent real AI per
 |---|---|
 | Definition | Multi-client projects, versioned prompt sets and entities, review, freezing, and diffs. |
 | Measurement | OpenAI-compatible memory, Kimi Search + Chat, DeepSeek Search + Chat, manual Consumer Web, and authorized local-browser collection. |
-| Execution | Frozen Wave protocols, resumable Runs, independent Judges, call/cost estimates, budgets, schedules, and alerts. |
+| Execution | Frozen Wave protocols, pre-run readiness, resumable Runs, independent Judges, Judge-only batches, budgets, schedules, and alerts. |
 | Evidence | Immutable raw answers, citations, screenshots, entity observations, and append-only human revisions. |
 | Intervention | Eligibility review, evidence-linked Briefs, versioned Assets, immutable Publications, and D7/D14/D28 cohort rounds. |
-| Delivery | Like-for-like comparison, immutable report snapshots, three-question decision summaries, staged approval, and client/internal HTML/PDF. |
+| Delivery | Effective Judge lineage, read-only handoff, like-for-like comparison, actual-model and metric appendices, staged approval, and client/internal HTML/PDF. |
 | Administration | Four roles, costs and work logs, retention, backup, export, and audit. |
 
 See the [bilingual product tour](#product-tour) for real interface screenshots and the [feature matrix](docs/feature-matrix.md) for the exact implementation and verification status.
@@ -274,7 +275,7 @@ See the [bilingual product tour](#product-tour) for real interface screenshots a
 - [Architecture](docs/v2-architecture.md) · [Feature matrix](docs/feature-matrix.md) · [Metrics](docs/metrics.md)
 - [Operations](docs/operations.md) · [CLI guide](docs/cli.md) · [Changelog](docs/changelog.md)
 
-The project uses FastAPI, SQLite, zero-build native ES modules, and local ECharts. CI covers backend tests, six real-Chrome workflows, frontend syntax, an offline golden set, 2,700 simulated DemoProvider calls, dependency/vendor checks, and secret scanning. Automated tests do not sign into real consumer platforms or incur paid provider calls.
+The project uses FastAPI, SQLite, zero-build native ES modules, and local ECharts. CI covers backend tests, seven real-Chrome workflows, frontend syntax, an offline golden set, 2,700 simulated DemoProvider calls, dependency/vendor checks, and secret scanning. Automated tests do not sign into real consumer platforms or incur paid provider calls.
 
 Contributions and workflow feedback are welcome through [Issues](https://github.com/noah-1106/geopulse/issues) and Pull Requests. Never attach credentials, customer data, cookies, browser profiles, or private databases.
 

@@ -10,10 +10,12 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from ..db import all_rows, dumps, loads, one, utc_now
 from ..engine.compare import compare_metrics
+from ..engine.metric_definitions import metric_appendix
 from ..engine.metrics import calculate_metrics, ratio
 from ..security import audit
 from .costs import summarize_costs
 from .measurement import load_run_samples
+from .quality import effective_protocol, run_quality
 from .state import transition
 
 TEMPLATES = Environment(loader=FileSystemLoader(str(Path(__file__).parent.parent / "templates")),
@@ -40,6 +42,7 @@ def wave_metrics(conn, wave: dict, allow_empty: bool = False) -> tuple[dict, dic
     samples, context = load_run_samples(conn, run)
     metrics = calculate_metrics(samples, context["primary_id"], loads(wave["stats_json"], {}))
     protocol = loads(run["snapshot_json"], {}).get("protocol") or context["protocol"]
+    protocol = effective_protocol(conn, run, protocol)
     return metrics, protocol, run
 
 
@@ -178,6 +181,7 @@ def customer_snapshot(snapshot: dict) -> dict:
         result.pop(key, None)
     for wave in result.get("waves", []):
         wave["protocol"] = _without_system_prompts(wave["protocol"])
+        wave["quality"] = _without_system_prompts(wave.get("quality"))
         wave.get("stats", {}).pop("budget", None)
         wave.pop("collection_evidence", None)
         for competitor in wave.get("metrics", {}).get("competitors", []):
@@ -227,6 +231,8 @@ def build_snapshot(conn, project: dict, wave_ids: list[int], actor: int) -> dict
                                       if key not in ("protocol_json", "stats_json", "engine_snapshot_json", "judge_snapshot_json")},
                              "protocol": protocol, "stats": loads(wave["stats_json"], {}),
                              "run": ({"id": run["id"], "attempt_no": run["attempt_no"], "status": run["status"]} if run else None),
+                             "quality": run_quality(conn, run) if run else None,
+                             "metric_appendix": metric_appendix(public_metrics),
                              "metrics": public_metrics, "raw_evidence_purged": purged,
                              "evidence_issues": evidence_issues, "web_evidence_issues": web_evidence_issues,
                              "collection_evidence": collection_evidence})
@@ -270,6 +276,9 @@ def build_snapshot(conn, project: dict, wave_ids: list[int], actor: int) -> dict
     latest = wave_payload[-1]["metrics"]
     if not latest["quality"]["valid_samples"]:
         diagnosis = "本周期无有效样本，无法诊断。请先检查引擎配置、失败样本和正式 run。"
+    elif wave_payload[-1].get("quality", {}).get("provisional_recommendations"):
+        diagnosis = (f"当前有 {wave_payload[-1]['quality']['provisional_recommendations']} 条推荐判定待复核，"
+                     "推荐相关计数均为 provisional；完成人工 revision 前不形成客户推荐诊断或审批结论。")
     elif comparison and not comparison.get("comparable"):
         diagnosis = comparison.get("reason") or "两次测量不可严格比较"
     else:
@@ -329,6 +338,17 @@ def release_gates(snapshot: dict) -> list[str]:
             errors.append(f"{label}：仍有 {quality['pending_review_answers']} 条回答待人工复核")
         if quality["judge_fallback_rate"]["value"] > 20:
             errors.append(f"{label}：Judge 降级率超过 20%，需先复核判定质量")
+        derived = item.get("quality") or {}
+        if derived.get("active_judge_batches"):
+            errors.append(f"{label}：补判批次 {derived['active_judge_batches']} 仍在执行，不能交付半更新状态")
+        if derived.get("judge_lineage") == "mixed":
+            errors.append(f"{label}：Judge 补判覆盖或配置不一致，不能作为同一判定口径交付")
+        if derived.get("fallback_recommended_pending"):
+            errors.append(f"{label}：{derived['fallback_recommended_pending']} 条 fallback 推荐尚未人工复核")
+        if derived.get("provisional_recommendations"):
+            errors.append(f"{label}：{derived['provisional_recommendations']} 条推荐仍为 provisional，不能进入已批准客户结论")
+        if item.get("protocol", {}).get("judge_mode") == "disabled":
+            errors.append(f"{label}：尚未形成完整 Judge 补判口径")
         if len(metrics["measurement_modes"]) > 1:
             errors.append(f"{label}：memory/search 口径混合")
         if item.get("raw_evidence_purged"):

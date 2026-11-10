@@ -185,7 +185,7 @@ def main():
                 page.get_by_role("tab", name=re.compile(r"^调度与告警")).click()
                 page.get_by_text("已阻塞", exact=True).wait_for()
                 page.get_by_text("硬预算", exact=False).first.wait_for()
-                page.get_by_role("button", name="确认已知悉", exact=True).click()
+                page.get_by_role("button", name="确认已知悉", exact=True).first.click()
                 page.get_by_text("告警已确认", exact=True).wait_for()
                 page.get_by_role("button", name="查看告警历史", exact=True).click()
                 page.get_by_role("dialog").get_by_text("已知悉", exact=True).wait_for()

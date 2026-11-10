@@ -131,6 +131,20 @@ class WaveIn(Model):
 class RunCreateIn(Model):
     budget_confirmation_reason: str = ""
     confirm_browser: bool = False
+    confirm_judge_disabled: bool = False
+
+
+class JudgeBatchIn(Model):
+    answer_ids: list[int] | None = None
+    judge_engine_id: int
+    judge_overrides: ExecutionParams = ExecutionParams()
+    confirm: bool = False
+    budget_confirmation_reason: str = ""
+
+
+class JudgeBatchRetryIn(Model):
+    confirm: bool = False
+    budget_confirmation_reason: str = ""
 
 
 class BrowserSessionIn(Model):
