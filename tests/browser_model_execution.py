@@ -76,6 +76,12 @@ def main():
                 judge.locator("summary").click()
                 judge.get_by_label("最大输出 tokens", exact=True).select_option("value")
                 judge.get_by_label("最大输出 tokens 数值", exact=True).fill("1200")
+                health = page.locator("details.execution-fields").filter(has_text="健康检查默认参数")
+                health.locator("summary").click()
+                assert health.get_by_label("Temperature", exact=True).input_value() == "inherit"
+                assert health.get_by_label("最大输出 tokens", exact=True).input_value() == "inherit"
+                assert health.get_by_label("Temperature", exact=True).locator("option:checked").text_content() == "使用厂商默认（不发送）"
+                assert "健康检查不继承回答或 Judge 参数" in health.text_content()
                 page.screenshot(path=OUTPUT / "01-engine-parameters.png", full_page=True)
                 page.get_by_role("button", name="保存测量目标", exact=True).click()
                 page.get_by_text("引擎配置已保存，密钥未回显", exact=True).wait_for()
@@ -84,6 +90,7 @@ def main():
                 assert configured["kind"] == "deepseek_search" and configured["mode"] == "search"
                 assert configured["answer_defaults"] == {"temperature": 0.3, "max_tokens": 650}
                 assert configured["judge_defaults"] == {"max_tokens": 1200}
+                assert configured["health_defaults"] == {}
                 assert configured["capabilities"]["max_output_tokens"] == 4000
 
                 independent = call(page, "post", "/api/projects/1/engines", {

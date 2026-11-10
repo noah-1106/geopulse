@@ -8,6 +8,8 @@ from backend.app.db import connect, loads, one
 from backend.app.engine.compare import protocol_check
 from backend.app.providers.base import ProviderError
 from backend.app.providers.openai_compat import OpenAICompatProvider
+from backend.app.services.budgets import estimate_health
+from backend.app.services.execution import resolve_execution, validate_engine_execution
 from conftest import api, execute_run
 
 
@@ -109,6 +111,57 @@ def test_openai_request_omits_explicit_null_and_json_response_format(monkeypatch
     provider.ask_json("question", {"temperature": None, "max_tokens": None, "system_prompt": None})
     payload = json.loads(requests[0].data)
     assert payload == {"model": "model", "messages": [{"role": "user", "content": "question"}]}
+
+
+def test_empty_health_defaults_use_provider_defaults_without_inheriting_answer(monkeypatch):
+    engine = {
+        "name": "只允许 temperature=1 的模型",
+        "capabilities": {"allowed_temperatures": [1]},
+        "answer_defaults": {"temperature": 1, "max_tokens": 8000},
+        "judge_defaults": {"temperature": 1},
+        "health_defaults": {},
+    }
+    validate_engine_execution(engine)
+    health = resolve_execution(engine, "health")
+    assert health["temperature"] is None and health["max_tokens"] is None
+    assert resolve_execution(engine, "answer")["max_tokens"] == 8000
+
+    requests = []
+
+    class Response:
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"finish_reason": "stop", "message": {"content": "健康检查通过"}}]}).encode()
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout: requests.append(request) or Response())
+    provider = OpenAICompatProvider("https://example.test/v1", "secret", "model")
+    provider.ask("只回答：健康检查通过", health)
+    payload = json.loads(requests[0].data)
+    assert "temperature" not in payload and "max_tokens" not in payload
+    assert payload["messages"][-1] == {"role": "user", "content": "只回答：健康检查通过"}
+
+    engine["health_defaults"] = {"temperature": 1, "max_tokens": 32}
+    explicit = resolve_execution(engine, "health")
+    assert explicit["temperature"] == 1 and explicit["max_tokens"] == 32
+
+
+def test_health_estimate_without_output_limit_uses_configured_token_estimate():
+    estimate = estimate_health({
+        "name": "健康检查预估", "kind": "openai_compat", "health_defaults": {},
+        "answer_defaults": {"max_tokens": 8000},
+        "cost_rule": {"currency": "CNY", "input_per_million": 2, "output_per_million": 3,
+                      "estimated_output_tokens": 640},
+    })
+    expected = round((40 * 2 + 640 * 3) / 1_000_000, 6)
+    assert estimate["estimated_cost"] == expected
+    assert estimate["max_estimated_cost"] == expected
 
 
 def test_complete_think_block_is_separated_without_retaining_reasoning():

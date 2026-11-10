@@ -19,6 +19,11 @@
 - 客户版、reviewer/viewer 不读取内部成本、Publication 备注、原始回答、Brief/Round 内部 evidence refs 或 Opportunity 原始 evidence/score JSON。Intervention 列表、详情、Brief/Asset/Publication/Round、导出和 HTTP 薄 CLI 已接通。
 - retention 后冻结 refs/comparison/hash 不变，Answer ref 标 `raw_purged`；新表进入项目导出并沿用递归 secret scrub/checksum。
 
+### 健康检查配置修正
+
+- 空 `health_defaults` 不再注入 `temperature=0/max_tokens=8`，而是省略这两个请求字段并使用厂商默认值，避免截断推理模型或向只允许特定温度的模型发送不兼容参数。answer/Judge/health 继续独立解析，显式 health 配置优先。
+- 健康检查省略输出上限时，预估复用引擎的“预估输出 tokens”，不再按 8 tokens 低估；管理界面明确展示不发送语义和参数隔离边界。
+
 ### 验证与边界
 
 - 完整 pytest 为 129 项通过；新增 populated migration、多个资产/渠道、固定 Run/comparison、Consumer Web 提醒、跨项目证据隔离、小样本/不可比、retention 和只读角色专项。
