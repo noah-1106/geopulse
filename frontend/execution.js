@@ -18,8 +18,8 @@ function modeOptions(kind, role) {
 export function executionFields(saved = {}, role = "answer", title = "执行参数") {
   const temperature = input(has(saved, "temperature") && saved.temperature !== null ? saved.temperature : 0.2,
     { type: "number", min: 0, max: 2, step: "0.01" });
-  const maxTokens = input(has(saved, "max_tokens") && saved.max_tokens !== null ? saved.max_tokens : role === "judge" ? 1800 : 700,
-    { type: "number", min: 1, max: 8000, step: 1 });
+  const maxTokens = input(has(saved, "max_tokens") && saved.max_tokens !== null ? saved.max_tokens : role === "judge" ? 1800 : role === "health" ? 700 : 65536,
+    { type: "number", min: 1, step: 1 });
   const systemPrompt = textarea(has(saved, "system_prompt") && saved.system_prompt !== null ? saved.system_prompt : "", { rows: 2 });
   const temperatureMode = select(modeOptions("temperature", role), parameterMode(saved, "temperature"));
   const maxTokensMode = select(modeOptions("max_tokens", role), parameterMode(saved, "max_tokens"));
@@ -33,7 +33,7 @@ export function executionFields(saved = {}, role = "answer", title = "执行参�
   const node = h("details", { class: "advanced execution-fields" }, h("summary", {}, title), h("div", {},
     h("p", { class: "muted small" }, role === "health"
       ? "健康检查不继承回答或 Judge 参数。未指定 temperature / max_tokens 时不发送，由厂商使用自身默认值；需要限制健康检查输出时可显式指定 max_tokens。"
-      : "留用继承会采用引擎默认值；显式“不发送”会从请求体省略该参数。回答与 Judge 的输出上限至少为 100 tokens。"),
+      : "留用继承会采用引擎或内建默认值。新回答测量默认 65536 tokens，可按模型修改且不设置统一最高值；已声明的模型输出上限仍会校验。回答与 Judge 的输出下限为 100 tokens。"),
     h("div", { class: "form-grid" },
       field("Temperature", temperatureMode), field("Temperature 数值", temperature),
       field("最大输出 tokens", maxTokensMode), field("最大输出 tokens 数值", maxTokens),

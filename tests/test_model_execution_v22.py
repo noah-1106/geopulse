@@ -9,7 +9,7 @@ from backend.app.engine.compare import protocol_check
 from backend.app.providers.base import ProviderError
 from backend.app.providers.openai_compat import OpenAICompatProvider
 from backend.app.services.budgets import estimate_health
-from backend.app.services.execution import resolve_execution, validate_engine_execution
+from backend.app.services.execution import answer_execution_for, resolve_execution, validate_engine_execution
 from conftest import api, execute_run
 
 
@@ -87,6 +87,37 @@ def test_model_capabilities_reject_unsupported_temperature_and_output_limit(clie
     error = api(client, "POST", f"/api/projects/{client.project_id}/engines", expected=422,
                 json=engine_payload(name="输出超限", capabilities={"max_output_tokens": 600},
                                     answer_defaults={"max_tokens": 500}, judge_defaults={"max_tokens": 700}))
+    assert "最大输出" in error["detail"]["message"]
+
+
+def test_new_answer_default_is_64k_without_rewriting_legacy_default():
+    assert resolve_execution({}, "answer")["max_tokens"] == 65536
+    assert resolve_execution({}, "judge")["max_tokens"] == 1800
+    assert answer_execution_for({}, 1)["max_tokens"] == 700
+
+
+@pytest.mark.parametrize("tokens", [65536, 131072, 393216, 1048576])
+def test_large_output_budgets_are_accepted_and_frozen(client, tokens):
+    engine = api(client, "POST", f"/api/projects/{client.project_id}/engines", json=engine_payload(
+        name=f"长输出 {tokens}", capabilities={"max_output_tokens": tokens},
+        answer_defaults={"max_tokens": tokens},
+    ))
+    assert engine["answer_defaults"]["max_tokens"] == tokens
+    prompt_set = api(client, "GET", f"/api/projects/{client.project_id}/prompt-sets")["items"][0]
+    wave = api(client, "POST", f"/api/projects/{client.project_id}/waves", json={
+        "prompt_set_id": prompt_set["id"], "label": f"长输出 Wave {tokens}", "engine_ids": [engine["id"]],
+        "repeats": 1, "use_judge": False,
+        "answer_overrides": {str(engine["id"]): {"max_tokens": tokens}},
+    })
+    execution = wave["protocol"]["answer_execution"][str(engine["id"])]
+    assert execution["max_tokens"] == tokens
+
+
+def test_declared_output_limit_still_rejects_larger_request(client):
+    error = api(client, "POST", f"/api/projects/{client.project_id}/engines", expected=422,
+                json=engine_payload(name="声明上限仍生效", capabilities={"max_output_tokens": 65536},
+                                    answer_defaults={"max_tokens": 65537}))
+    assert error["detail"]["code"] == "invalid_model_parameters"
     assert "最大输出" in error["detail"]["message"]
 
 

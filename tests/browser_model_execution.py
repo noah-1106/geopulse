@@ -64,14 +64,16 @@ def main():
                 page.get_by_label("API Key", exact=True).fill("offline-test-not-a-credential")
                 page.get_by_text("模型能力声明", exact=True).click()
                 capability_panel = page.locator("details").filter(has_text="模型能力声明")
-                capability_panel.get_by_label("最大输出 tokens", exact=True).fill("4000")
+                capability_panel.get_by_label("最大输出 tokens", exact=True).fill("1048576")
                 capability_panel.get_by_label("JSON response_format", exact=True).select_option("true")
                 answer = page.locator("details.execution-fields").filter(has_text="回答默认参数")
                 answer.locator("summary").click()
+                assert answer.get_by_label("最大输出 tokens 数值", exact=True).input_value() == "65536"
+                assert answer.get_by_label("最大输出 tokens 数值", exact=True).get_attribute("max") is None
                 answer.get_by_label("Temperature", exact=True).select_option("value")
                 answer.get_by_label("Temperature 数值", exact=True).fill("0.3")
                 answer.get_by_label("最大输出 tokens", exact=True).select_option("value")
-                answer.get_by_label("最大输出 tokens 数值", exact=True).fill("650")
+                answer.get_by_label("最大输出 tokens 数值", exact=True).fill("65536")
                 judge = page.locator("details.execution-fields").filter(has_text="Judge 默认参数")
                 judge.locator("summary").click()
                 judge.get_by_label("最大输出 tokens", exact=True).select_option("value")
@@ -88,10 +90,10 @@ def main():
                 engines = call(page, "get", "/api/projects/1/engines")["items"]
                 configured = next(item for item in engines if item["name"] == "DeepSeek 离线协议配置")
                 assert configured["kind"] == "deepseek_search" and configured["mode"] == "search"
-                assert configured["answer_defaults"] == {"temperature": 0.3, "max_tokens": 650}
+                assert configured["answer_defaults"] == {"temperature": 0.3, "max_tokens": 65536}
                 assert configured["judge_defaults"] == {"max_tokens": 1200}
                 assert configured["health_defaults"] == {}
-                assert configured["capabilities"]["max_output_tokens"] == 4000
+                assert configured["capabilities"]["max_output_tokens"] == 1048576
 
                 independent = call(page, "post", "/api/projects/1/engines", {
                     "name": "浏览器独立 Demo Judge", "vendor": "GeoPulse", "kind": "demo", "model": "demo-v2", "mode": "memory"})
