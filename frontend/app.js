@@ -7,6 +7,7 @@ import { renderMeasure } from "./views/measure.js";
 import { renderReview } from "./views/review.js";
 import { renderOpportunities } from "./views/opportunities.js";
 import { renderReports } from "./views/reports.js";
+import { renderConcepts } from "./views/concepts.js";
 import { renderAdmin } from "./views/admin.js";
 
 const routes = [
@@ -17,7 +18,8 @@ const routes = [
   ["review", "证据复核", renderReview, "review", ""],
   ["opportunities", "机会与行动", renderOpportunities, "opportunities", "客户交付"],
   ["reports", "对比与报告", renderReports, "reports", ""],
-  ["admin", "系统管理", renderAdmin, "admin", "工作区管理"],
+  ["concepts", "常见概念", renderConcepts, "concepts", "工作区管理"],
+  ["admin", "系统管理", renderAdmin, "admin", ""],
 ];
 const state = { user: null, projects: [], project: null, role: "viewer", renderId: 0, cleanups: [] };
 const workspace = document.getElementById("workspace");
@@ -43,6 +45,7 @@ function navIcon(name) {
     review: ["M6 3h9l3 3v15H6zM14 3v4h4M9 12h6M9 16h4"],
     opportunities: ["M6 3v18M6 7h7a4 4 0 0 1 4 4v10M14 4l3 3-3 3"],
     reports: ["M4 20V10M10 20V4M16 20v-7M2 20h20"],
+    concepts: ["M4 5c3-1 5-1 8 1v14c-3-2-5-2-8-1z", "M20 5c-3-1-5-1-8 1v14c3-2 5-2 8-1z"],
     admin: ["M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6"],
   };
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");

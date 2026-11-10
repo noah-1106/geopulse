@@ -54,7 +54,9 @@ export GEOPULSE_WORKERS=4
 curl --fail http://127.0.0.1:8700/api/health
 ```
 
-响应包含程序和 schema 版本。引擎健康检查与存活检查不同：非 demo 引擎会向厂商发起真实请求，可能收费，API 必须带 `{"confirm":true}`，UI 会再次确认。健康检查使用引擎自己的 health 有效参数，不再固定 temperature=0/max_tokens=8。Search 和 Chat 健康调用会进入统一调用台账，同时保留业务分组 `kind=health` 与实际计费操作 `operation=search/answer`，因此运营成本和用量汇总不会漏掉健康检查。
+响应包含程序和 schema 版本。引擎健康检查与存活检查不同：非 demo 引擎会向厂商发起真实请求，可能收费，API 必须带 `{"confirm":true}`，UI 会再次确认。健康检查使用独立的 health 有效参数，不继承 answer/Judge；未配置 `health_defaults.temperature` 或 `max_tokens` 时不发送对应字段，由厂商使用自身默认值，不再注入 `temperature=0/max_tokens=8`。省略 `max_tokens` 时，token/金额预估使用价格配置中的“预估输出 tokens”，仍是启发式预估而非费用上限；需要限制探针输出时应显式配置 health `max_tokens`。Search 和 Chat 健康调用会进入统一调用台账，同时保留业务分组 `kind=health` 与实际计费操作 `operation=search/answer`，因此运营成本和用量汇总不会漏掉健康检查。
+
+新回答测量默认 `max_tokens=65536`，Judge 默认 1800；管理员和 Agent 可在引擎默认值或 Wave override 中修改，不再受应用统一的 8000 上限限制。引擎声明的 `capabilities.max_output_tokens` 是提前校验依据；未声明时不按模型名猜测，由厂商执行其真实限制。Kimi 使用 `max_completion_tokens` 发送该预算，其他 OpenAI-compatible Provider 使用 `max_tokens`。大输出预算会增加费用和耗时，且推理可能与正文共享预算；它不会改写已冻结 Wave，需要为修改后的参数创建新 Wave。
 
 真实 smoke 执行前逐项确认：
 

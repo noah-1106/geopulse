@@ -482,6 +482,22 @@ def main() -> None:
                 assert exported["sha256"] and exported["project_id"] == 1
                 assert all(not row["secret_ref"] for row in exported["tables"]["engine_configs"])
 
+                page.locator("#main-nav a[href='#/concepts']").click()
+                page.get_by_role("heading", name="常见概念", exact=True).wait_for()
+                assert page.locator(".work-section table").count() == 4
+                assert page.get_by_role("cell", name="判定模型", exact=True).count() == 1
+                assert page.get_by_role("cell", name="测量轮次", exact=True).count() == 1
+                assert page.get_by_text("上下文窗口", exact=True).count() >= 1
+                page.locator(".toast.show").wait_for(state="hidden")
+                page.screenshot(path=OUTPUT / "07b-concepts-desktop.png", full_page=True)
+                page.set_viewport_size({"width": 390, "height": 844})
+                page.wait_for_timeout(200)
+                assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+                assert page.locator(".table-wrap:visible").evaluate_all("nodes => nodes.filter(node => node.scrollWidth > node.clientWidth + 1).length") == 0
+                page.screenshot(path=OUTPUT / "07c-concepts-mobile.png", full_page=True)
+                page.set_viewport_size({"width": 1440, "height": 1000})
+                page.wait_for_timeout(100)
+
                 page.locator("#account-menu summary").click()
                 page.get_by_role("button", name="新建客户项目", exact=True).click()
                 page.get_by_label("客户名称", exact=True).fill("第二测试客户")
@@ -573,6 +589,7 @@ def main() -> None:
                     ("opportunities", "#/opportunities?tab=remeasure", "机会与行动"),
                     ("review", "#/review?review=all", "证据复核"),
                     ("reports", f"#/reports?tab=delivery&report={report_id}", "对比与报告"),
+                    ("concepts", "#/concepts", "常见概念"),
                     ("admin", "#/admin?tab=engines", "系统管理"),
                 ]
                 page.set_viewport_size({"width": 1280, "height": 900})
@@ -766,6 +783,9 @@ def main() -> None:
                     role_page.get_by_text(f"报告 v{report['version']} · 客户版已批准", exact=True).wait_for()
                     assert (role_page.get_by_role("button", name="预览内部版", exact=True).count() == 1) == (role == "analyst")
                     assert (role_page.get_by_role("link", name="下载内部版 PDF", exact=True).count() == 1) == (role == "analyst")
+                    role_page.locator("#main-nav a[href='#/concepts']").click()
+                    role_page.get_by_role("heading", name="常见概念", exact=True).wait_for()
+                    assert role_page.locator(".work-section table").count() == 4
                     report_data = role_page.request.get(f"{base}/api/projects/1/reports/{report_id}").json()
                     if role == "analyst":
                         assert "internal_samples" in report_data["snapshot"]

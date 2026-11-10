@@ -93,7 +93,7 @@ Scheduler → 到期 Provider Wave → 幂等创建 Run → 同一个 SQLite 队
 - 同引擎 Judge 或独立 Judge 的 `judge_mode`、公开 `judge_signature` 与内部执行快照；独立 Judge 可服务普通 Provider 或人工 Web，人工回答/Search 调用为 0；
 - 统计阈值、安全重试上限和是否启用全量 Judge。
 
-参数优先级为：Wave 按引擎 answer/Judge 覆盖 → 旧 Wave 全局兼容输入 → 引擎 answer/Judge/health 默认值 → 内建兼容默认值。显式 null 是不发送，不等于继承。已知 `max_output_tokens`、temperature 支持和允许枚举在冻结/健康检查前校验；未知能力保持 unknown，不按模型名猜测。编辑引擎不会改写旧 Wave。
+参数优先级为：Wave 按引擎 answer/Judge 覆盖 → 旧 Wave 全局兼容输入 → 引擎 answer/Judge/health 默认值 → 内建兼容默认值。显式 null 是不发送，不等于继承。新回答测量的内建 max_tokens 为 65536，Judge 为 1800，均可由管理员或 Agent 通过引擎配置/Wave override 修改；应用不设统一最高值，已声明的 `max_output_tokens` 继续逐引擎校验。旧协议缺失参数时仍按原 700/1800 回退，不重写历史口径。健康检查不继承 answer/Judge；其内建 temperature/max_tokens 均为 null，即未显式配置时使用厂商默认值。已知 `max_output_tokens`、temperature 支持和允许枚举在冻结/健康检查前校验；未知能力保持 unknown，不按模型名猜测。Kimi Chat 将有效 max_tokens 映射为厂商当前 `max_completion_tokens` 字段，台账仍保存统一参数名；DeepSeek 和普通 OpenAI-compatible 保持 `max_tokens`。编辑引擎不会改写旧 Wave。
 
 严格比较先把旧 top-level 参数和新 per-engine map 归一化为有效执行协议，再校验完整协议，并同时检查：
 

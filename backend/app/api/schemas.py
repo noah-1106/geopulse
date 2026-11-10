@@ -98,7 +98,7 @@ class CollectionProtocolIn(Model):
 
 class ExecutionParams(Model):
     temperature: float | None = Field(default=None, ge=0, le=2)
-    max_tokens: int | None = Field(default=None, ge=1, le=8000)
+    max_tokens: int | None = Field(default=None, ge=1)
     system_prompt: str | None = None
 
 
@@ -117,7 +117,7 @@ class WaveIn(Model):
     engine_ids: list[int]
     repeats: int = Field(default=3, ge=1, le=5)
     temperature: float | None = Field(default=None, ge=0, le=2)
-    max_tokens: int | None = Field(default=None, ge=100, le=8000)
+    max_tokens: int | None = Field(default=None, ge=100)
     system_prompt: str | None = None
     answer_overrides: dict[int, ExecutionParams] = {}
     judge_overrides: ExecutionParams = ExecutionParams()

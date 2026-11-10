@@ -14,14 +14,22 @@
 
 ### 工作台、报告与权限
 
+- 新增独立“常见概念”页，按业务、测量证据、优化交付和技术参数提供中英文对照与项目内解释；所有角色可读，不批量改写既有工作流、API 字段或历史报告。
 - 新增 Intervention drawer 和 `#/opportunities?tab=actions&action=<id>` 深链。首层呈现当前状态、最新 cohort 观察、非因果边界和一个主操作；Brief、资产、发布、复测和技术时间线分层展开，支持 1440/768/390、焦点闭环、Escape 和当前阶段恢复。
 - 报告快照升级为 schema v2，使用独立 `report_v2.html`，首屏回答“哪些关键问题不推荐我们、改了什么/发到哪里、之后观察到什么及证据强度”，并给唯一下一轮建议。旧 v1 快照仍走原模板，JSON/HTML/hash 不变。
 - 客户版、reviewer/viewer 不读取内部成本、Publication 备注、原始回答、Brief/Round 内部 evidence refs 或 Opportunity 原始 evidence/score JSON。Intervention 列表、详情、Brief/Asset/Publication/Round、导出和 HTTP 薄 CLI 已接通。
 - retention 后冻结 refs/comparison/hash 不变，Answer ref 标 `raw_purged`；新表进入项目导出并沿用递归 secret scrub/checksum。
 
+### 健康检查配置修正
+
+- 空 `health_defaults` 不再注入 `temperature=0/max_tokens=8`，而是省略这两个请求字段并使用厂商默认值，避免截断推理模型或向只允许特定温度的模型发送不兼容参数。answer/Judge/health 继续独立解析，显式 health 配置优先。
+- 健康检查省略输出上限时，预估复用引擎的“预估输出 tokens”，不再按 8 tokens 低估；管理界面明确展示不发送语义和参数隔离边界。
+- 移除 answer/Judge/Wave override 的 8000 tokens 应用硬上限；新回答默认调整为 65536，Judge 保持 1800，管理员和 Agent 可按模型修改，声明的模型输出上限仍逐引擎校验。旧协议兼容回退和历史 Wave 不变。
+- Kimi Chat 使用厂商当前 `max_completion_tokens` 字段，DeepSeek/普通 OpenAI-compatible 保持 `max_tokens`；调用台账继续以统一的 `max_tokens` 名称记录有效预算。
+
 ### 验证与边界
 
-- 完整 pytest 为 129 项通过；新增 populated migration、多个资产/渠道、固定 Run/comparison、Consumer Web 提醒、跨项目证据隔离、小样本/不可比、retention 和只读角色专项。
+- 完整 pytest 为 137 项通过；新增 populated migration、多个资产/渠道、固定 Run/comparison、Consumer Web 提醒、跨项目证据隔离、小样本/不可比、retention、只读角色和大输出预算专项。
 - 独立真实 Chrome Intervention 验收通过：pending 阻断、2 个资产、2 条发布、D7/D14/D28、冻结评估、三问报告、HTML/PDF、深链刷新、焦点/Escape、viewer/reviewer、1440/768/390，外部请求为 0。
 - 六套真实 Chrome 均通过：八工作流、执行治理、人工 Consumer Web、模型执行/独立 Judge、两个授权 Web Driver，以及 Intervention 证据链。前端 ESM 与 Python compile 通过。
 - 离线黄金集 12/12、2700 次 DemoProvider 压力、ECharts vendor 完整性和 `pip-audit` 通过；压力无重复样本/revision、恢复重复 Provider 调用或外部网络调用。新增变更的凭据模式扫描无发现；本机未安装 gitleaks，CI 保留完整仓库扫描。
